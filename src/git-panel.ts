@@ -54,7 +54,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   let messageBeforeAmend = "";
   let loading = false;
   let generation = 0;
-  let selectionRequest = 0;own(()=>{generation++;selectionRequest++;});
+  let selectionRequest = 0;own(()=>{generation++;selectionRequest++;closeDiff();el('tree').hidden=false;const heading=sidebar.querySelector('h3');if(heading)heading.hidden=false;document.querySelector('main')?.classList.remove('git-open');});
   
   let lastState = '';
   const feedback = (message: string) => { el('git-feedback').textContent = message; };

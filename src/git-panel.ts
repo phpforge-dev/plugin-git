@@ -30,7 +30,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   document.querySelector('.code')!.append(review);
   const dialog = document.createElement('dialog');
   dialog.innerHTML = html('<h2>Conferir commit local</h2><p>Será gravada a versão preparada de todos os arquivos abaixo. Mudanças somente no disco ficam de fora.</p><ul id="git-commit-files"></ul><pre id="git-commit-message"></pre><p id="git-commit-error" role="alert"></p><button id="git-cancel-commit">Voltar à revisão</button> <button id="git-confirm-commit">Criar commit local</button>');
-  document.body.append(dialog);
+  document.body.append(dialog);own(()=>dialog.remove());
   const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
   toolIcon(el('git-refresh'),'<path d="M19 7a8 8 0 1 0 1 8M19 3v5h-5"/>',tr('Atualizar alterações'));
   toolIcon(el('git-tools'),'<circle cx="7" cy="5" r="2"/><circle cx="17" cy="5" r="2"/><circle cx="7" cy="19" r="2"/><path d="M7 7v10m10-10c0 7-10 2-10 8"/>',tr('Branches e operações…'));
@@ -54,7 +54,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   let messageBeforeAmend = "";
   let loading = false;
   let generation = 0;
-  let selectionRequest = 0;
+  let selectionRequest = 0;own(()=>{generation++;selectionRequest++;});
   
   let lastState = '';
   const feedback = (message: string) => { el('git-feedback').textContent = message; };
@@ -101,7 +101,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
       if (request !== selectionRequest) return;
       diff.setModel(null); models.forEach(m => m.dispose());
       const language = path.endsWith('.php') ? 'php' : undefined;
-      models = [monaco.editor.createModel(value.before, language), monaco.editor.createModel(value.after, language)];
+      models = [ownModel(value.before, language), ownModel(value.after, language)];
       diff.setModel({ original: models[0], modified: models[1] });
       selected = revision ? undefined : { value, staged: prepared };
       el('git-stage').hidden = !!revision; el('git-hunks').hidden = !!revision;
@@ -192,7 +192,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
         modal.append(pre,button);
       }
       const cancel = document.createElement('button'); cancel.textContent=tr('Fechar trechos'); cancel.onclick=()=>modal.close(); modal.append(cancel);
-      modal.addEventListener('cancel',e=>{if(busy)e.preventDefault();}); modal.onclose=()=>modal.remove(); document.body.append(modal); modal.showModal();
+      modal.addEventListener('cancel',e=>{if(busy)e.preventDefault();}); modal.onclose=()=>modal.remove(); document.body.append(modal);own(()=>modal.remove()); modal.showModal();
     } catch(error) { feedback(String(error)); }
   };
   el('git-file-filter').oninput=()=>{if(state)render();};
@@ -238,3 +238,5 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
 }
 
 function ownEditor(...args:any[]){const v=monaco.editor.createDiffEditor(...args);own(()=>v.dispose());return v;}
+
+function ownModel(...args:any[]){const model=monaco.editor.createModel(...args);own(()=>model.dispose());return model;}

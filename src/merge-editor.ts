@@ -59,7 +59,7 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
   document.body.append(window);
   const language = languageFor(conflict.path);
   const options: monaco.editor.IStandaloneEditorConstructionOptions = { automaticLayout: true, minimap: { enabled: false }, glyphMargin: true, scrollBeyondLastLine: false, fontSize: 13, lineNumbersMinChars: 3 };
-  const models = [monaco.editor.createModel(conflict.ours, language), monaco.editor.createModel(conflict.base, language), monaco.editor.createModel(conflict.theirs, language)];
+  const models = [ownModel(conflict.ours, language), ownModel(conflict.base, language), ownModel(conflict.theirs, language)];
   const left = ownCodeEditor(q('.merge-left'), { ...options, model: models[0], readOnly: true });
   const result = ownCodeEditor(q('.merge-result'), { ...options, model: models[1] });
   const right = ownCodeEditor(q('.merge-right'), { ...options, model: models[2], readOnly: true });
@@ -249,7 +249,7 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
   }
   dialog.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => b.onclick = () => void act(b.dataset.act!));
   dialog.addEventListener('cancel', () => finish());
-  document.body.append(dialog);
+  document.body.append(dialog);own(()=>dialog.remove());
   if (await load()) dialog.showModal();
  }
 
@@ -257,3 +257,5 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
 }
 
 function ownCodeEditor(...args:any[]){const v=monaco.editor.create(...args);own(()=>v.dispose());return v;}
+
+function ownModel(...args:any[]){const model=monaco.editor.createModel(...args);own(()=>model.dispose());return model;}

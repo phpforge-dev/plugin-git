@@ -16,7 +16,7 @@ const labels: Partial<Record<GitOperation['kind'], string>> = {
 export function gitTools(api: IdeApi, hooks: Hooks) {
   const dialog = document.createElement('dialog'); dialog.id = 'git-operations';
   dialog.innerHTML = html('<h2>Branches e operações</h2><p id="git-operation-context"></p><div id="git-branch-list"></div><form><label>Operação<select id="git-operation-kind"></select></label><label id="git-target-label">Destino<select id="git-operation-target"></select><input id="git-operation-text"></label><p id="git-operation-note"></p><pre id="git-operation-result" role="status"></pre><button type="button" id="git-operation-close">Fechar</button> <button type="submit" id="git-operation-run">Executar operação</button></form>');
-  document.body.append(dialog);
+  document.body.append(dialog);own(()=>dialog.remove());
   const find = <T extends HTMLElement>(id: string) => dialog.querySelector<T>('#' + id)!;
   const kind = find<HTMLSelectElement>('git-operation-kind');
   const select = find<HTMLSelectElement>('git-operation-target');

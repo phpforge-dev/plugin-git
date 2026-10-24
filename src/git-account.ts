@@ -15,7 +15,7 @@ export function mountGitAccount(api: IdeApi, busy: ()=>boolean, setBusy:(value:b
  <label>Remoto para testar leitura<select id="account-remote"></select></label>
  <p id="account-result" role="status" aria-live="polite"></p>
  <button type="button" id="account-close">Fechar</button> <button type="button" id="account-test">Testar configuração salva</button> <button type="submit" id="account-save">Salvar neste repositório</button></form>`;
- document.body.append(dialog);
+ document.body.append(dialog);own(()=>dialog.remove());
  const el=<T extends HTMLElement=HTMLElement>(id:string)=>dialog.querySelector<T>('#'+id)!;
  const input=(id:string)=>el<HTMLInputElement>(id);
  let state:GitAccount;let epoch=0;let working=false;let dirty=false;

@@ -7,7 +7,7 @@ export function gitBranches(api: IdeApi, hooks: Hooks, advanced: () => void) {
  const dialog=document.createElement('dialog');dialog.id='git-branches-popup';
  dialog.setAttribute('aria-label',tr('Branches Git'));
  dialog.innerHTML=html`<div class="branch-popup-heading"><strong id="branch-current"></strong><button id="branch-close" aria-label="Fechar">×</button></div><div class="branch-toolbar"><button id="branch-new">Nova branch…</button><button id="branch-fetch">Fetch</button><button id="branch-pull">Pull</button></div><input id="branch-search" type="search" placeholder="Buscar branch…" aria-label="Buscar branch…"><div id="branch-list"></div><form id="branch-create" hidden><label>Nome da branch<input id="branch-name" required autocomplete="off" placeholder="feature/minha-mudanca"></label><label class="branch-check"><input id="branch-checkout" type="checkbox" checked>Trocar para a nova branch</label><button type="submit">Criar branch</button><button type="button" id="branch-create-cancel">Cancelar</button></form><div id="branch-delete" hidden><p id="branch-delete-label"></p><button id="branch-delete-confirm">Excluir branch local</button><button id="branch-delete-cancel">Cancelar</button></div><pre id="branch-result" role="status" aria-live="polite"></pre><button id="branch-advanced">Mais operações Git…</button>`;
- document.body.append(dialog);
+ document.body.append(dialog);own(()=>dialog.remove());
  const el=<T extends HTMLElement=HTMLElement>(id:string)=>dialog.querySelector<T>('#'+id)!;
  const search=el<HTMLInputElement>('branch-search');
  let tools:GitTools={branches:[],remotes:[],stashes:[]};let state:GitState;let pendingDelete='';let epoch=0;

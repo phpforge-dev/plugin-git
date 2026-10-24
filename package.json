@@ -11,5 +11,8 @@
   "devDependencies": {
     "esbuild": "0.25.12",
     "happy-dom": "^21.0.4"
+  },
+  "dependencies": {
+    "diff": "9.0.0"
   }
 }

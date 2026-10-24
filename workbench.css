@@ -410,3 +410,14 @@ main,main.git-open{height:calc(100vh - var(--ij-toolbar-height) - var(--ij-statu
 .context-menu,.tool-context-menu,.usages-popup,.git-line-popup,.recent-projects,#git-branches-popup,#search-everywhere,#appearance-dialog,.connection-dialog,.refactor-toast,.project-context-menu,#keymap-dialog,.plugins-dialog,.plugin-consent,.local-history,.trust-dialog,.project-dialog,.welcome-dialog{background:var(--ij-popup);border:1px solid var(--ij-popup-border);border-radius:var(--ij-popup-radius);box-shadow:var(--ij-shadow);color:var(--ij-text)}
 
 .usages-popup footer,.git-line-popup footer,.recent-projects footer,#search-everywhere footer,.refactor-dialog .refactor-footer{background:var(--ij-popup-footer);color:var(--ij-popup-footer-text);height:auto;border-color:var(--ij-popup-border)}
+
+/* Foreground only: selection and file-type icons keep their existing contrast. */
+#tree :is(button,summary)[data-vcs="ignored"]>.resource-name{color:var(--ij-vcs-ignored)}
+#tree :is(button,summary)[data-vcs="ignored"]:focus-visible{outline-color:var(--ij-focus)}
+
+.line-diff{max-height:260px;overflow:auto}
+.line-diff pre{margin:0;padding:8px 14px;font:12px/1.6 Menlo,monospace;white-space:pre;max-height:none}
+.line-diff .removed{background:var(--ij-error-bg);color:var(--ij-error)}
+.line-diff .added{background:var(--ij-success-bg);color:var(--ij-success)}
+.line-diff .removed{background:var(--danger-bg);color:var(--danger)}
+.line-diff .added{background:var(--success-bg);color:var(--success)}

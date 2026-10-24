@@ -1,0 +1,41 @@
+{
+  "id": "phpforge.git",
+  "name": "Git",
+  "version": "1.0.0",
+  "minIdeVersion": "0.2.13",
+  "main": "main.js",
+  "description": "git workbench integration with explicit host services.",
+  "activation": {
+    "languages": []
+  },
+  "permissions": [
+    "project.read",
+    "workbench"
+  ],
+  "workbench": {
+    "apiVersion": 1,
+    "main": "workbench.js",
+    "style": "workbench.css",
+    "services": [
+      "gitAccount",
+      "gitApplyHunk",
+      "gitBranches",
+      "gitCommit",
+      "gitCommitMessage",
+      "gitConflict",
+      "gitDiff",
+      "gitHistory",
+      "gitHistoryDiff",
+      "gitHunks",
+      "gitLog",
+      "gitOperation",
+      "gitResolve",
+      "gitResolveSide",
+      "gitSaveAccount",
+      "gitStage",
+      "gitStatus",
+      "gitTestAccount",
+      "gitTools"
+    ]
+  }
+}

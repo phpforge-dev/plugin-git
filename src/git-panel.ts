@@ -1,6 +1,8 @@
 import {tr,msg,html,dockWindow,resizeToolWindow,toolIcon,editorFont,keymap,fileIcon,activeLanguage,monaco,own,on,every} from './sdk';
 
 
+import {mountGitFileAgent} from './git-file-agent';
+import {mountCommitGeneration} from './git-generate-message';
 import { mountGitAccount } from './git-account';
 
 import { gitLogView } from './git-log-view';
@@ -54,6 +56,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   let messageBeforeAmend = "";
   let loading = false;
   let generation = 0;
+  const agentFiles = mountGitFileAgent(api, panel, hasUnsaved);
   let selectionRequest = 0;own(()=>{generation++;selectionRequest++;closeDiff();el('tree').hidden=false;const heading=sidebar.querySelector('h3');if(heading)heading.hidden=false;document.querySelector('main')?.classList.remove('git-open');});
   
   let lastState = '';
@@ -67,6 +70,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   el('git-tools').onclick = () => { void operations.branches(); };
   on(document,'ide-git-branches',()=>{void operations.branches();});
   function commitEnabled() {
+    agentFiles.setBusy(busy);
     const amend=el<HTMLInputElement>('git-amend');
     amend.disabled=busy||!state?.head||!!state.operation||!!state.mergeHead;
     const disabled=busy||!state||!!state.changes.some(c=>conflictStatus(c.index+c.worktree))||(!staged().length&&!state.mergeHead&&!amend.checked)||!el<HTMLTextAreaElement>('git-message').value.trim();
@@ -147,6 +151,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
         if(!conflictStatus(change.index+change.worktree)){const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=change.index!==' '&&change.index!=='?';checkbox.indeterminate=checkbox.checked&&change.worktree!==' ';checkbox.setAttribute('aria-label',msg`Preparar ${change.path}`);checkbox.title=tr('Incluir no index para commit');checkbox.onchange=()=>void prepareFiles([change.path],checkbox.checked);row.append(checkbox);}row.append(button);group.append(row);
       }
     }
+    agentFiles.sync(state!.changes);
     if (!state!.changes.length) { const p = document.createElement('p'); p.textContent = state!.mergeHead ? tr('Conteúdo sem alterações. Conclua o merge com um commit.') : tr('Nenhuma alteração. Diretório de trabalho limpo.'); list.append(p); }
     commitEnabled();
   }
@@ -162,7 +167,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
       if (force) feedback(hasUnsaved() ? tr('Há buffers não salvos. Git usa o conteúdo do disco.') : '');
     } catch (error) {
       if (version !== generation) return;
-      state = undefined; lastState = ''; el('git-branch').textContent = '';  el('git-changes').replaceChildren(); commitEnabled(); closeDiff(); feedback(String(error));
+      state = undefined; agentFiles.sync([]); lastState = ''; el('git-branch').textContent = '';  el('git-changes').replaceChildren(); commitEnabled(); closeDiff(); feedback(String(error));
     } finally { loading = false; }
   }
   const history = gitLogView(api,{diff(path,revision){void showDiff(path,false,revision);},branches(){void operations.branches();},operation(kind,hash){void operations.open(kind,hash);},commit(){el('show-commit').click();}});
@@ -196,6 +201,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
     } catch(error) { feedback(String(error)); }
   };
   el('git-file-filter').oninput=()=>{if(state)render();};
+  const commitGeneration = mountCommitGeneration(api, panel, commitEnabled);
   el('git-message').oninput = commitEnabled;
   el('git-stage').onclick = async () => {
     if (!selected || busy) return;
@@ -234,7 +240,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   // Poll only while visible; keep a reviewed diff stable until explicitly reopened.
   every(() => { if (!panel.hidden && !dialog.open && document.hasFocus()) void refresh(); }, 3000);
   on(window,'focus', () => { if (!panel.hidden) void refresh(); });
-  return { reset() { account.close(); operations.close(); generation++; selectionRequest++; state = undefined; lastState = ''; el<HTMLInputElement>('git-amend').checked=false;pushAfterCommit=false;dialog.close(); closeDiff(); el<HTMLTextAreaElement>('git-message').value = ''; history.reset(); el('git-changes').replaceChildren(); if (!panel.hidden) void refresh(true); } };
+  return { reset() { agentFiles.reset(); commitGeneration.reset(); account.close(); operations.close(); generation++; selectionRequest++; state = undefined; lastState = ''; el<HTMLInputElement>('git-amend').checked=false;pushAfterCommit=false;dialog.close(); closeDiff(); el<HTMLTextAreaElement>('git-message').value = ''; history.reset(); el('git-changes').replaceChildren(); if (!panel.hidden) void refresh(true); } };
 }
 
 function ownEditor(...args:any[]){const v=monaco.editor.createDiffEditor(...args);own(()=>v.dispose());return v;}

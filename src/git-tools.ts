@@ -86,5 +86,5 @@ export function gitTools(api: IdeApi, hooks: Hooks) {
     if (hooks.busy()) return;
     try { await merging.merge(path); } catch (error) { hooks.feedback(String(error)); }
   }
-  return { open, branches: branches.open, resolve, conflicts: () => merging.conflicts(), close: () => { epoch++; dialog.close(); branches.close(); } };
+  return { open, branches: branches.open, resolve, conflicts: () => merging.conflicts(), close: () => { epoch++; merging.close(); dialog.close(); branches.close(); } };
 }

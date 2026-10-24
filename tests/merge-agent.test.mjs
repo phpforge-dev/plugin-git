@@ -1,0 +1,56 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import {Window} from 'happy-dom';
+import {mkdtemp, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
+
+test('guided merge preserves manual work, verifies conflict, handles cancellation and disposal', async () => {
+ const folder = await mkdtemp(join(tmpdir(), 'merge-agent-'));
+ try {
+  const output = join(folder, 'test.mjs');
+  await build({stdin:{contents:"export {mountMergeAgent} from './src/merge-agent'; export {parseMergeSuggestion,mergeAgentPrompt} from './src/merge-agent-prompt'; export {configure} from './src/sdk';",resolveDir:process.cwd()},outfile:output,bundle:true,format:'esm'});
+  const {mountMergeAgent,configure,parseMergeSuggestion,mergeAgentPrompt} = await import(pathToFileURL(output));
+  const w = new Window();globalThis.document = w.document;
+  document.body.innerHTML = '<section><div class="merge-panes"></div></section>';
+  let resolve, prompt, cancellations = 0, calls = 0, token = 'conflict-1', version = 1, text = 'manual draft', available = true;
+  const conflict = {path:'merge.php',base:'base text',ours:'left text',theirs:'right text',oursLabel:'main',theirsLabel:'feature',operation:'merge',token};
+  configure({tr:s=>s,html:s=>s,service:()=>available?{generate:value=>{calls++;prompt=value;return new Promise(r=>resolve=r);},cancel:async()=>{cancellations++;}}:undefined});
+  const api = {gitConflict:async()=>({...conflict,token})};
+  const parent = document.querySelector('section');
+  const result = {text:()=>text,version:()=>version,replace:value=>{text=value;version++;}};
+  const controller = mountMergeAgent(api,parent,conflict,result);
+  const generate = parent.querySelector('.merge-ai-generate');
+  const use = parent.querySelector('.merge-ai-use');
+  const instruction = parent.querySelector('.merge-ai-prompt');
+  const preview = parent.querySelector('.merge-ai-suggestion');
+  const wait = async () => {for(let i=0;i<25;i++)await Promise.resolve();};
+  generate.click();await wait();assert.equal(calls,0);assert.match(parent.textContent,/Descreva/);
+  instruction.value = 'Preserve validation from main and return type from feature';
+  available = false;generate.click();await wait();assert.match(parent.textContent,/conecte/);assert.equal(calls,0);
+  available = true;generate.click();await wait();
+  assert.match(prompt,/Preserve validation/);assert.match(prompt,/base text/);assert.match(prompt,/left text/);assert.match(prompt,/right text/);assert.match(prompt,/manual draft/);
+  assert.equal(text,'manual draft');assert.equal(use.disabled,true);
+  resolve(JSON.stringify({result:'proposed merge'}));await wait();
+  assert.equal(text,'manual draft');preview.value = 'reviewed merge';use.click();await wait();assert.equal(text,'reviewed merge');
+  generate.click();await wait();text = 'new manual edit';version++;
+  resolve(JSON.stringify({result:'would overwrite'}));await wait();use.click();await wait();
+  assert.equal(text,'new manual edit');assert.match(parent.textContent,/editado durante/);
+  generate.click();await wait();resolve(JSON.stringify({result:'stale index'}));await wait();token = 'conflict-2';use.click();await wait();
+  assert.equal(text,'new manual edit');assert.match(parent.textContent,/mudou no disco/);
+  generate.click();await wait();assert.equal(calls,3);
+  token = conflict.token;generate.click();await wait();
+  parent.querySelector('.merge-ai-cancel').click();await wait();resolve(JSON.stringify({result:'late'}));await wait();
+  assert.equal(text,'new manual edit');assert.equal(cancellations,1);assert.equal(parent.querySelector('.merge-ai-preview').hidden,true);
+  generate.click();await wait();resolve('explanation without JSON');await wait();assert.match(parent.textContent,/formato inválido/);assert.equal(text,'new manual edit');
+  generate.click();await wait();controller.dispose();resolve(JSON.stringify({result:'after close'}));await wait();
+  assert.equal(text,'new manual edit');assert.equal(parent.querySelector('.merge-ai'),null);assert.equal(cancellations,2);
+  assert.equal(parseMergeSuggestion('{"result":""}'),'');
+  assert.throws(()=>parseMergeSuggestion('{"result":123}'),/formato inválido/);
+  assert.throws(()=>parseMergeSuggestion(JSON.stringify({result:'<<<<<<< ours\nwrong\n=======\n>>>>>>> theirs'})),/marcadores/);
+  assert.throws(()=>mergeAgentPrompt({...conflict,base:'x'.repeat(60001)},'', 'guide'),/grande demais/);
+  await w.happyDOM.abort();
+ } finally { await rm(folder,{recursive:true,force:true}); }
+});

@@ -1,3 +1,4 @@
+import {mountMergeAgent} from './merge-agent';
 import {tr,msg,html,dockWindow,resizeToolWindow,toolIcon,editorFont,keymap,fileIcon,activeLanguage,monaco,own,on,every} from './sdk';
 
 
@@ -29,9 +30,22 @@ function ask(parent: HTMLElement, message: string, stay: string, proceed: string
 
 export function mergeTools(api: IdeApi, hooks: Hooks) {
  let list: HTMLDialogElement | undefined;
+ let epoch = 0;
+ let activeClose: (() => void) | undefined;
+ function closeAll() {
+  epoch++;
+  activeClose?.();
+  list?.close();
+  list?.remove();
+  list = undefined;
+ }
+ own(closeAll);
 
  async function merge(path: string): Promise<boolean> {
+  const request = ++epoch;
   const conflict = await api.gitConflict(path);
+  if (request !== epoch) return false;
+  activeClose?.();
   return new Promise(resolve => show(conflict, resolve));
  }
 
@@ -64,6 +78,7 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
   const result = ownCodeEditor(q('.merge-result'), { ...options, model: models[1] });
   const right = ownCodeEditor(q('.merge-right'), { ...options, model: models[2], readOnly: true });
   const model = models[1];
+  let aiApplied = false;
 
   // Faixa de cada chunk no resultado acompanha edições manuais por decoração rastreada.
   const rangeOf = (target: monaco.editor.ITextModel, [s, e]: [number, number]) => {
@@ -88,6 +103,7 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
    retrack(i, monaco.Range.fromPositions(model.getPositionAt(start), end));
   }
   function apply(i: number, side: Side) {
+   if (aiApplied) return;
    const c = m.chunks[i]; if (status[i][side] !== 'pending' && status[i][side] !== 'optional') return;
    const text = (side === 'left' ? m.left.slice(...c.left) : m.right.slice(...c.right)).join('');
    const other: Side = side === 'left' ? 'right' : 'left';
@@ -98,7 +114,7 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
    else if (c.kind === 'conflict' && status[i][other] === 'pending') status[i][other] = 'optional';
    render();
   }
-  function ignore(i: number) { for (const side of ['left', 'right'] as const) if (status[i][side] === 'pending' || status[i][side] === 'optional') status[i][side] = 'ignored'; render(); }
+  function ignore(i: number) { if (aiApplied) return; for (const side of ['left', 'right'] as const) if (status[i][side] === 'pending' || status[i][side] === 'optional') status[i][side] = 'ignored'; render(); }
   function applyNonConflicting(which: Side | 'all') {
    m.chunks.forEach((c, i) => {
     if (c.kind === 'conflict' || resolved(i)) return;
@@ -106,6 +122,7 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
    });
   }
   function resolveSimple() {
+   if (aiApplied) return;
    let count = 0;
    m.chunks.forEach((c, i) => {
     if (c.kind !== 'conflict' || status[i].left !== 'pending' || status[i].right !== 'pending') return;
@@ -124,6 +141,12 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
    return { range: new monaco.Range(line, 1, empty ? line : Math.min(e, target.getLineCount()), 1), options: { isWholeLine: true, className: `merge-chunk merge-${cls}${empty ? ' merge-insert' : ''}`, ...(glyph ? { glyphMarginClassName: glyph, glyphMarginHoverMessage: { value: hover ?? '' } } : {}) } };
   }
   function render() {
+   if (aiApplied) {
+    Object.values(decorations).forEach(collection => collection.clear());
+    for (const act of ['prev', 'next', 'apply-left', 'apply-all', 'apply-right', 'simple']) q<HTMLButtonElement>(`[data-act="${act}"]`).disabled = true;
+    q('.merge-summary').textContent = tr('Sugestão no resultado. Revise antes de aplicar.');
+    return;
+   }
    decorations.left.set(m.chunks.map((c, i) => lineDecoration(models[0], c.left, kindClass(i), c.kind !== 'right' ? glyph(i, 'left', 'merge-glyph-apply-left') : undefined, status[i].left === 'optional' ? 'Acrescentar ao resultado (+)' : 'Aplicar no resultado (»)')));
    decorations.right.set(m.chunks.map((c, i) => lineDecoration(models[2], c.right, kindClass(i), c.kind !== 'left' && c.kind !== 'both' ? glyph(i, 'right', 'merge-glyph-apply-right') : undefined, status[i].right === 'optional' ? 'Acrescentar ao resultado (+)' : 'Aplicar no resultado («)')));
    decorations.result.set(m.chunks.map((_chunk, i) => lineDecoration(model, span(tracking(i)), kindClass(i), status[i].left === 'pending' || status[i].right === 'pending' || status[i].left === 'optional' || status[i].right === 'optional' ? 'merge-glyph merge-glyph-ignore' : undefined, tr('Ignorar alteração (×)'))));
@@ -163,6 +186,7 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
   });
 
   function go(step: 1 | -1) {
+   if (aiApplied) return;
    const line = result.getPosition()?.lineNumber ?? 0;
    const starts = m.chunks.map((_, i) => tracking(i).startLineNumber);
    const order = starts.map((s, i) => [s, i]).sort((a, b) => a[0] - b[0]);
@@ -173,15 +197,28 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
    left.revealLineInCenter(c.left[0] + 1); right.revealLineInCenter(c.right[0] + 1);
   }
 
+  const agentMerge = mountMergeAgent(api, window, conflict, {
+   text: () => model.getValue(),
+   version: () => model.getVersionId(),
+   replace(text) {
+    model.pushStackElement();
+    model.pushEditOperations([], [{range: model.getFullModelRange(), text}], () => null);
+    model.pushStackElement();
+    aiApplied = true;
+    render();
+    result.focus();
+   },
+  });
   let closing = false;
-  const close = (done: boolean) => { closing = true; window.close(); left.dispose(); result.dispose(); right.dispose(); models.forEach(x => x.dispose()); window.remove(); finished(done); };
+  const close = (done: boolean) => { if (closing) return; closing = true; activeClose = undefined; agentMerge.dispose(); window.close(); left.dispose(); result.dispose(); right.dispose(); models.forEach(x => x.dispose()); window.remove(); finished(done); };
+  activeClose = () => close(false);
   async function save(text: string) {
    if (hooks.busy()) return;
    if (hooks.hasUnsaved()) { q('.error').textContent = tr('Salve os buffers abertos antes de resolver.'); return; }
    hooks.setBusy(true); window.querySelectorAll('button').forEach(b => b.disabled = true);
    try { await api.gitResolve(conflict.path, text, conflict.token); close(true); hooks.feedback(`${conflict.path}: conflito resolvido e preparado.`); }
    catch (error) { q('.error').textContent = String(error); }
-   finally { hooks.setBusy(false); if (!closing) { window.querySelectorAll('button').forEach(b => b.disabled = false); render(); } await hooks.changed(); }
+   finally { hooks.setBusy(false); if (!closing) { window.querySelectorAll('button').forEach(b => b.disabled = false); agentMerge.refresh(); render(); } await hooks.changed(); }
   }
   async function cancel() {
    if (model.getValue() !== conflict.base && !await ask(window, tr('Descartar as alterações feitas no resultado?'), 'Continuar merge', 'Descartar')) return;
@@ -193,7 +230,9 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
    apply: async () => {
     const conflicts = m.chunks.filter((c, i) => c.kind === 'conflict' && !resolved(i)).length;
     const changes = m.chunks.filter((c, i) => c.kind !== 'conflict' && !resolved(i)).length;
-    if (conflicts || changes) {
+    if (aiApplied) {
+     if (!await ask(window, tr('Salvar o resultado revisado e marcar este conflito como resolvido?'), 'Continuar merge', 'Aplicar e marcar resolvido')) return;
+    } else if (conflicts || changes) {
      const what = [conflicts ? `${conflicts} ${conflicts === 1 ? tr('conflito não processado') : tr('conflitos não processados')}` : '', changes ? `${changes} ${changes === 1 ? tr('alteração não processada') : tr('alterações não processadas')}` : ''].filter(Boolean).join(' e ');
      if (!await ask(window, msg`Há ${what}. Salvar e marcar como resolvido mesmo assim?`, 'Continuar merge', 'Aplicar e marcar resolvido')) return;
     }
@@ -215,7 +254,9 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
   let selected: string | undefined;
   const finish = () => { dialog.close(); dialog.remove(); list = undefined; };
   async function load() {
-   const state = await api.gitStatus(); const files = state.changes.filter(conflicted);
+   const state = await api.gitStatus();
+   if (list !== dialog) return false;
+   const files = state.changes.filter(conflicted);
    if (!files.length) { finish(); hooks.feedback(tr('Todos os conflitos foram resolvidos. Conclua com um commit.')); return false; }
    if (!files.some(f => f.path === selected)) selected = files[0].path;
    try {
@@ -238,7 +279,7 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
    if (kind === 'close') { finish(); return; }
    if (!selected || hooks.busy()) return;
    try {
-    if (kind === 'merge') { dialog.close(); await merge(selected); if (await load()) dialog.showModal(); return; }
+    if (kind === 'merge') { dialog.close(); const pending = merge(selected); const request = epoch; await pending; if (request !== epoch || list !== dialog) return; if (await load()) dialog.showModal(); return; }
     if (hooks.hasUnsaved()) { q('.error').textContent = tr('Salve os buffers abertos antes de resolver.'); return; }
     // Lado inteiro via backend: funciona também para exclusão e arquivos binários.
     const token = (await api.gitStatus()).indexToken;
@@ -253,7 +294,7 @@ export function mergeTools(api: IdeApi, hooks: Hooks) {
   if (await load()) dialog.showModal();
  }
 
- return { merge, conflicts };
+ return { merge, conflicts, close: closeAll };
 }
 
 function ownCodeEditor(...args:any[]){const v=monaco.editor.create(...args);own(()=>v.dispose());return v;}

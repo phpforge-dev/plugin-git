@@ -280,3 +280,26 @@ main.git-open{height:calc(100vh - var(--ij-toolbar-height) - var(--ij-statusbar-
 #git-review-commit:disabled{opacity:.5}
 @media(max-width:1050px){.git-log-layout{grid-template-columns:130px minmax(210px,1fr) 200px}.git-commit-row,.git-log-columns{grid-template-columns:minmax(100px,1fr) 75px}.git-commit-row time,.git-log-columns>span:last-child{display:none}}
 @media(max-width:700px){.git-log-layout{grid-template-columns:120px minmax(200px,1fr) 190px}}
+
+.merge-ai{border:1px solid var(--ij-border);border-radius:var(--ij-control-radius);padding:6px 10px;max-height:42vh;overflow:auto;flex-shrink:0}
+.merge-ai summary{color:var(--ij-link);cursor:pointer}
+.merge-ai label{display:block;margin:6px 0}
+.merge-ai textarea{display:block;width:100%;resize:vertical;margin-top:4px;min-height:48px}
+.merge-ai-actions{display:flex;gap:6px}
+.merge-ai p{margin:6px 0;color:var(--ij-text-secondary)}
+.merge-ai-preview{padding:0!important}
+.merge-ai-preview[hidden]{display:none}
+.merge-ai-suggestion{font:var(--ij-font-size)/1.4 monospace;white-space:pre}
+
+.git-agent-selection{padding:6px 12px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--ij-border);flex:none}
+.git-agent-selection small{flex-basis:100%;color:var(--ij-text-secondary);font-size:var(--ij-font-size-small)}
+#git-panel .git-change-row:has(.git-file-row.agent-selected){background:var(--ij-selection);border-radius:var(--ij-control-radius)}
+#git-panel #git-changes .git-file-row.agent-selected{box-shadow:inset 2px 0 var(--ij-focus)}
+.git-agent-query{position:fixed;inset:8vh auto auto 50%;transform:translateX(-50%);margin:0;width:min(760px,94vw);max-width:94vw;max-height:84vh;overflow:auto;box-shadow:var(--ij-shadow);font:var(--ij-font-size)/1.4 var(--ij-font-ui)}
+.git-agent-query h2{margin-top:0}
+.git-agent-query label{display:block;margin:10px 0}
+.git-agent-query textarea{display:block;width:100%;margin-top:4px;resize:vertical}
+.git-agent-files{max-height:16vh;overflow:auto;overflow-wrap:anywhere;padding-left:22px}
+.git-agent-presets,.git-agent-query-actions{display:flex;gap:6px;flex-wrap:wrap}
+.git-agent-answer{white-space:pre-wrap;overflow-wrap:anywhere;max-height:36vh;overflow:auto;padding:10px;border:1px solid var(--ij-border);background:var(--ij-field);color:var(--ij-text)}
+.git-agent-query-actions{position:sticky;bottom:0;background:var(--ij-dialog);padding-top:8px}

@@ -128,12 +128,21 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
     el<HTMLButtonElement>('git-review-commit').disabled=disabled;el<HTMLButtonElement>('git-commit-push').disabled=disabled;
     panel.querySelectorAll<HTMLInputElement>('#git-changes input').forEach(input=>input.disabled=busy);
   }
+  /** Stages/unstages a batch: one status, diffs read in parallel, stages in sequence (git index lock). Boxes flip at once; the refresh corrects them on failure. */
   async function prepareFiles(paths:string[],prepare:boolean){
     if(busy)return;const focus=document.activeElement?.getAttribute('aria-label');busy=true;el<HTMLButtonElement>('open').disabled=true;commitEnabled();
-    try{for(const path of paths){const current=await api.gitStatus();const change=current.changes.find(c=>c.path===path);if(!change||conflictStatus(change.index+change.worktree))continue;
-      const inIndex=change.index!==' '&&change.index!=='?';if(prepare&&change.worktree===' '&&inIndex||!prepare&&!inIndex)continue;
-      const value=await api.gitDiff(path,!prepare);await api.gitStage(path,!prepare,value.token);
-    }closeDiff();feedback('');}catch(error){feedback(String(error));}
+    for(const path of paths){const box=panel.querySelector<HTMLInputElement>(`#git-changes input[aria-label="${CSS.escape(msg`Preparar ${path}`)}"]`);if(box){box.checked=prepare;box.indeterminate=false;}}
+    try{
+      const current=await api.gitStatus();
+      const targets=paths.filter(path=>{const change=current.changes.find(c=>c.path===path);if(!change||conflictStatus(change.index+change.worktree))return false;
+        const inIndex=change.index!==' '&&change.index!=='?';return !(prepare&&change.worktree===' '&&inIndex||!prepare&&!inIndex);});
+      const diffs=await Promise.all(targets.map(path=>api.gitDiff(path,!prepare)));
+      for(const [i,path] of targets.entries()){
+        if(targets.length>1)feedback(prepare?msg`Preparando ${i+1}/${targets.length}…`:msg`Retirando ${i+1}/${targets.length}…`);
+        await api.gitStage(path,!prepare,diffs[i].token);
+      }
+      if(selected&&targets.includes(el('git-file').textContent??''))closeDiff();feedback('');
+    }catch(error){feedback(String(error));}
     finally{busy=false;el<HTMLButtonElement>('open').disabled=false;lastState='';await refresh();commitEnabled();if(focus)panel.querySelector<HTMLInputElement>(`input[aria-label="${CSS.escape(focus)}"]`)?.focus();}
   }
   el<HTMLInputElement>('git-amend').onchange=async()=>{

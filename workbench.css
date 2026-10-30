@@ -332,3 +332,6 @@ main.git-open{height:calc(100vh - var(--ij-toolbar-height) - var(--ij-statusbar-
 #git-panel .git-generate-message:disabled{opacity:.4}
 .git-generate-message svg{width:16px;height:16px;display:block}
 #git-panel .git-commit-toolbar{flex-wrap:wrap;height:auto;min-height:32px;row-gap:2px}
+/* main.git-open sets panel sizes; collapsed panels from the host (no tool open on that side) must still take no space. */
+main.git-open.right-hidden{--right-size:0px}
+main.git-open.left-hidden{--left-size:0px}

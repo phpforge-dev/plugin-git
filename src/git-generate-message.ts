@@ -1,13 +1,16 @@
-import {sdk, tr, html, own} from './sdk';
+import {sdk, tr, html, own, iconButton} from './sdk';
 
 type Agent = {generate(prompt: string): Promise<string>; cancel(): Promise<void>};
 export function mountCommitGeneration(api: IdeApi, panel: HTMLElement, changed: () => void) {
  const message = panel.querySelector<HTMLTextAreaElement>('#git-message')!;
  const button = document.createElement('button');
  button.type = 'button';
- button.textContent = tr('Gerar com IA');
- button.title = tr('Enviar as alterações preparadas ao agente conectado para sugerir uma mensagem.');
- message.before(button);
+ // Icon in the Amend row, like the PhpStorm AI commit-message action; the hover explains what is sent.
+ iconButton(button, '<path d="M4 20h4L19 9l-4-4L4 16Z"/><path d="m13 7 4 4"/><path d="M19 15v4m-2-2h4"/>', tr('Gerar com IA'));
+ button.title = tr('Gerar com IA') + '\n' + tr('Enviar as alterações preparadas ao agente conectado para sugerir uma mensagem.');
+ button.classList.add('git-generate-message');
+ const options = panel.querySelector<HTMLElement>('.git-commit-options');
+ if (options) options.append(button); else message.before(button);
  const dialog = document.createElement('dialog');
  dialog.innerHTML = html('<h2>Mensagem sugerida pelo agente</h2><p role="status"></p><textarea aria-label="Mensagem sugerida" rows="8" style="width:100%;box-sizing:border-box"></textarea><button data-apply>Usar mensagem</button> <button data-close>Fechar</button>');
  document.body.append(dialog);

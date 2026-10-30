@@ -1,4 +1,4 @@
-import {tr,msg,html,dockWindow,resizeToolWindow,toolIcon,editorFont,keymap,fileIcon,activeLanguage,monaco,own,on,every} from './sdk';
+import {sdk,tr,msg,html,dockWindow,resizeToolWindow,toolIcon,editorFont,keymap,fileIcon,activeLanguage,monaco,own,on,every,iconButton} from './sdk';
 
 
 import {mountGitFileAgent} from './git-file-agent';
@@ -28,7 +28,13 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   sidebar.append(panel);
   const review = document.createElement('section');
   review.id = 'git-review'; review.hidden = true;
-  review.innerHTML = html('<div class="git-diff-toolbar"><strong id="git-file"></strong><button id="git-hunks">Selecionar trechos…</button><button id="git-stage">Preparar arquivo</button><button id="git-close-diff">Voltar ao editor</button></div><div id="git-sides"></div><div id="git-diff"></div>');
+  // Layout follows the PhpStorm diff viewer: navigation icons, viewer/whitespace/highlight choices, difference count; then path and sides.
+  review.innerHTML = html('<div class="git-diff-toolbar"><span class="git-diff-icons"><button id="git-diff-prev" type="button"></button><button id="git-diff-next" type="button"></button><button id="git-diff-source" type="button"></button><span class="git-diff-separator"></span><button id="git-file-prev" type="button"></button><button id="git-file-next" type="button"></button></span>'
+    + '<select id="git-diff-viewer" aria-label="Modo de visualização"><option value="side">Visualizador lado a lado</option><option value="unified">Visualizador unificado</option></select>'
+    + '<select id="git-diff-whitespace" aria-label="Espaços em branco"><option value="none">Não ignorar</option><option value="trim">Ignorar espaços nas pontas</option></select>'
+    + '<select id="git-diff-highlight" aria-label="Destaque das diferenças"><option value="chars">Destacar caracteres</option><option value="lines">Destacar linhas</option><option value="none">Não destacar</option></select>'
+    + '<span id="git-diff-count" role="status"></span></div>'
+    + '<div class="git-diff-header"><strong id="git-file"></strong><span id="git-sides"></span><span class="git-diff-actions"><button id="git-hunks">Selecionar trechos…</button><button id="git-stage">Preparar arquivo</button><button id="git-close-diff">Voltar ao editor</button></span></div><div id="git-diff"></div>');
   document.querySelector('.code')!.append(review);
   const dialog = document.createElement('dialog');
   dialog.innerHTML = html('<h2>Conferir commit local</h2><p>Será gravada a versão preparada de todos os arquivos abaixo. Mudanças somente no disco ficam de fora.</p><ul id="git-commit-files"></ul><pre id="git-commit-message"></pre><p id="git-commit-error" role="alert"></p><button id="git-cancel-commit">Voltar à revisão</button> <button id="git-confirm-commit">Criar commit local</button>');
@@ -48,6 +54,50 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   el('git-collapse-all').onclick=()=>panel.querySelectorAll('details').forEach(d=>d.open=false);
   el('git-show-diff').onclick=()=>(panel.querySelector<HTMLButtonElement>('.git-file-row.selected')??panel.querySelector<HTMLButtonElement>('.git-file-row'))?.click();
   const diff = ownEditor(el('git-diff'), { automaticLayout: true, readOnly: true, originalEditable: false, renderSideBySide: true, renderSideBySideInlineBreakpoint: 600, minimap: { enabled: false }, scrollBeyondLastLine: false });
+  const diffPrefs = (() => { try { return JSON.parse(localStorage.getItem('phpforge.git.diff') ?? '{}'); } catch { return {}; } })() as { viewer?: string; whitespace?: string; highlight?: string };
+  const viewer = el<HTMLSelectElement>('git-diff-viewer'), whitespace = el<HTMLSelectElement>('git-diff-whitespace'), highlight = el<HTMLSelectElement>('git-diff-highlight');
+  viewer.value = diffPrefs.viewer === 'unified' ? 'unified' : 'side'; whitespace.value = diffPrefs.whitespace === 'trim' ? 'trim' : 'none';
+  highlight.value = ['lines', 'none'].includes(diffPrefs.highlight ?? '') ? diffPrefs.highlight! : 'chars';
+  function applyDiffPrefs() {
+    diff.updateOptions?.({ renderSideBySide: viewer.value === 'side', ignoreTrimWhitespace: whitespace.value === 'trim' });
+    review.dataset.highlight = highlight.value;
+    try { localStorage.setItem('phpforge.git.diff', JSON.stringify({ viewer: viewer.value, whitespace: whitespace.value, highlight: highlight.value })); } catch {}
+  }
+  for (const select of [viewer, whitespace, highlight]) select.onchange = applyDiffPrefs;
+  applyDiffPrefs();
+  iconButton(el('git-diff-prev'), '<path d="M12 19V5m-6 6 6-6 6 6"/>', tr('Diferença anterior (Shift+F7)'));
+  iconButton(el('git-diff-next'), '<path d="M12 5v14m-6-6 6 6 6-6"/>', tr('Próxima diferença (F7)'));
+  iconButton(el('git-diff-source'), '<path d="M4 20h4L19 9l-4-4L4 16Z"/><path d="m13 7 4 4"/>', tr('Ir para o código-fonte (F4)'));
+  iconButton(el('git-file-prev'), '<path d="M19 12H5m6-6-6 6 6 6"/>', tr('Arquivo anterior'));
+  iconButton(el('git-file-next'), '<path d="M5 12h14m-6-6 6 6-6 6"/>', tr('Próximo arquivo'));
+  let reviewPath: string | undefined;
+  const changeCount = () => diff.getLineChanges?.()?.length ?? 0;
+  function updateCount() {
+    const count = changeCount();
+    el('git-diff-count').textContent = count === 0 ? tr('Nenhuma diferença') : count === 1 ? tr('1 diferença') : msg`${count} diferenças`;
+    for (const id of ['git-diff-prev', 'git-diff-next']) el<HTMLButtonElement>(id).disabled = !count;
+  }
+  own(diff.onDidUpdateDiff?.(updateCount));
+  const goToDiff = (target: 'next' | 'previous') => { if (changeCount()) diff.goToDiff(target); };
+  /** Opens the reviewed file at the line under the cursor of the right-hand (current) side, like PhpStorm Jump to Source. */
+  async function jumpToSource() {
+    if (!reviewPath) return;
+    const line = diff.getModifiedEditor?.().getPosition?.()?.lineNumber ?? diff.getLineChanges?.()?.[0]?.modifiedStartLineNumber ?? 1;
+    const path = reviewPath; closeDiff();
+    try { await sdk.host.open(path, Math.max(0, line - 1)); } catch (error) { feedback(String(error)); }
+  }
+  function stepFile(delta: number) {
+    const rows = [...panel.querySelectorAll<HTMLButtonElement>('.git-file-row')];
+    const at = rows.findIndex(row => row.classList.contains('selected'));
+    if (rows.length) rows[(at + delta + rows.length) % rows.length].click();
+  }
+  el('git-diff-prev').onclick = () => goToDiff('previous'); el('git-diff-next').onclick = () => goToDiff('next');
+  el('git-diff-source').onclick = () => { void jumpToSource(); };
+  el('git-file-prev').onclick = () => stepFile(-1); el('git-file-next').onclick = () => stepFile(1);
+  on(review, 'keydown', (event: KeyboardEvent) => {
+    if (event.key === 'F7') { event.preventDefault(); goToDiff(event.shiftKey ? 'previous' : 'next'); }
+    else if (event.key === 'F4' || (event.key === 'ArrowDown' && (event.metaKey || event.ctrlKey))) { event.preventDefault(); void jumpToSource(); }
+  });
   let models: monaco.editor.ITextModel[] = [];
   let state: GitState | undefined;
   let selected: { value: GitDiff; staged: boolean } | undefined;
@@ -58,6 +108,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   let generation = 0;
   const agentFiles = mountGitFileAgent(api, panel, hasUnsaved);
   let selectionRequest = 0;own(()=>{generation++;selectionRequest++;closeDiff();el('tree').hidden=false;const heading=sidebar.querySelector('h3');if(heading)heading.hidden=false;document.querySelector('main')?.classList.remove('git-open');});
+  let diffQueue = Promise.resolve();
   
   let lastState = '';
   const feedback = (message: string) => { el('git-feedback').textContent = message; };
@@ -92,7 +143,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
     finally{busy=false;el<HTMLButtonElement>('open').disabled=false;commitEnabled();}
   };
   function closeDiff() {
-    selectionRequest++; selected = undefined; diff.setModel(null); models.forEach(m => m.dispose()); models = [];
+    selectionRequest++; selected = undefined; reviewPath = undefined; diff.setModel(null); models.forEach(m => m.dispose()); models = [];
     review.hidden = true;
     for (const id of ['tabs', 'breadcrumbs', 'navigation', 'editor']) el(id).hidden = false;
   }
@@ -100,24 +151,30 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
     const request = ++selectionRequest;
     feedback(tr('Carregando comparação…'));
     el<HTMLButtonElement>('git-stage').disabled = true;
+    const previous = diffQueue;
+    let release!: () => void;
+    diffQueue = new Promise<void>(resolve => { release = resolve; });
+    await previous;
     try {
+      if (request !== selectionRequest) return;
       const value = revision ? await api.gitHistoryDiff(revision, path) : await api.gitDiff(path, prepared);
       if (request !== selectionRequest) return;
       diff.setModel(null); models.forEach(m => m.dispose());
       const language = path.endsWith('.php') ? 'php' : undefined;
-      models = [ownModel(value.before, language), ownModel(value.after, language)];
+      models = [monaco.editor.createModel(value.before, language), monaco.editor.createModel(value.after, language)];
       diff.setModel({ original: models[0], modified: models[1] });
       selected = revision ? undefined : { value, staged: prepared };
       el('git-stage').hidden = !!revision; el('git-hunks').hidden = !!revision;
       for (const row of panel.querySelectorAll<HTMLButtonElement>('.git-file-row')) row.classList.toggle('selected', row.dataset.path === path && row.dataset.staged === String(prepared));
-      el('git-file').textContent = path;
+      el('git-file').textContent = path; reviewPath = path;
       el('git-sides').textContent = `${value.beforeLabel}   →   ${value.afterLabel}`;
       el('git-stage').textContent = prepared ? tr('Retirar do commit') : tr('Preparar arquivo inteiro');
       el<HTMLButtonElement>('git-stage').disabled = busy;
       for (const id of ['tabs', 'breadcrumbs', 'navigation', 'editor']) el(id).hidden = true;
-      review.hidden = false; diff.layout();
+      review.hidden = false; diff.layout(); updateCount();
       feedback(revision ? tr('Comparação histórica somente leitura; merges são comparados com o primeiro pai.') : hasUnsaved() ? tr('Há buffers não salvos. O Git compara somente o conteúdo do disco.') : tr('Revise o diff antes de preparar ou retirar o arquivo.'));
     } catch (error) { if (request === selectionRequest) { closeDiff(); feedback(String(error)); } }
+    finally { release(); }
   }
   function render() {
     const list = el('git-changes'); list.replaceChildren();
@@ -245,4 +302,3 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
 
 function ownEditor(...args:any[]){const v=monaco.editor.createDiffEditor(...args);own(()=>v.dispose());return v;}
 
-function ownModel(...args:any[]){const model=monaco.editor.createModel(...args);own(()=>model.dispose());return model;}

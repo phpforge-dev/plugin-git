@@ -1,4 +1,4 @@
-import {sdk, tr, msg, html, own} from './sdk';
+import {sdk, tr, msg, html, own, iconButton} from './sdk';
 import {gitFileSelection} from './git-file-selection';
 import {selectedFileContext, selectedContextUnchanged, selectedFilesPrompt} from './git-file-context';
 
@@ -7,17 +7,27 @@ export function mountGitFileAgent(api: IdeApi, panel: HTMLElement, hasUnsaved: (
  const list = panel.querySelector<HTMLElement>('#git-changes')!;
  const toolbar = document.createElement('div');
  toolbar.className = 'git-agent-selection';
- toolbar.innerHTML = html('<button class="git-agent-ask" type="button" disabled>Perguntar ao agente</button><button class="git-agent-all" type="button">Selecionar visíveis</button><button class="git-agent-clear" type="button" disabled>Limpar seleção</button><small>Selecione com Ctrl/⌘+clique ou Shift+clique. Espaço alterna a seleção. As caixas preparam o commit.</small>');
- list.before(toolbar);
+ toolbar.innerHTML = html('<button class="git-agent-ask" type="button" disabled></button><button class="git-agent-all" type="button"></button><button class="git-agent-clear" type="button" disabled></button>');
+ // Icon-only, like the PhpStorm Commit toolbar: labels live in the hover tooltip; the selection help joins the ask tooltip.
+ const commitToolbar = panel.querySelector<HTMLElement>('.git-commit-toolbar');
+ if (commitToolbar) { toolbar.classList.add('git-agent-icons'); commitToolbar.append(toolbar); } else list.before(toolbar);
  const ask = toolbar.querySelector<HTMLButtonElement>('.git-agent-ask')!;
  const clear = toolbar.querySelector<HTMLButtonElement>('.git-agent-clear')!;
+ const hint = tr('Selecione com Ctrl/⌘+clique ou Shift+clique. Espaço alterna a seleção. As caixas preparam o commit.');
+ const askIcon = '<path d="M5 18V8a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v5a4 4 0 0 1-4 4H9l-4 3Z"/><path d="M9 10h6M9 13h4"/>';
+ iconButton(toolbar.querySelector<HTMLElement>('.git-agent-all')!, '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8 12 3 3 5-6"/>', tr('Selecionar visíveis'));
+ iconButton(clear, '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="m9 9 6 6m0-6-6 6"/>', tr('Limpar seleção'));
  let busy = false;
- const selection = gitFileSelection(list, () => {
+ const selection = gitFileSelection(list, () => updateAsk());
+ function updateAsk() {
   const count = selection.paths().length;
-  ask.textContent = count ? msg`Perguntar ao agente (${count})` : tr('Perguntar ao agente');
+  iconButton(ask, askIcon, count ? msg`Perguntar ao agente (${count})` : tr('Perguntar ao agente'));
+  ask.title += '\n' + hint;
+  if (count) { const badge = document.createElement('span'); badge.className = 'git-agent-count'; badge.textContent = String(count); ask.append(badge); }
   ask.disabled = busy || !count;
   clear.disabled = !count;
- });
+ }
+ updateAsk();
  toolbar.querySelector<HTMLButtonElement>('.git-agent-all')!.onclick = () => selection.all();
  clear.onclick = () => selection.clear();
  const dialog = document.createElement('dialog');

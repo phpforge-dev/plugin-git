@@ -303,3 +303,32 @@ main.git-open{height:calc(100vh - var(--ij-toolbar-height) - var(--ij-statusbar-
 .git-agent-presets,.git-agent-query-actions{display:flex;gap:6px;flex-wrap:wrap}
 .git-agent-answer{white-space:pre-wrap;overflow-wrap:anywhere;max-height:36vh;overflow:auto;padding:10px;border:1px solid var(--ij-border);background:var(--ij-field);color:var(--ij-text)}
 .git-agent-query-actions{position:sticky;bottom:0;background:var(--ij-dialog);padding-top:8px}
+/* Review takes over the whole editor area (PhpStorm opens the diff in the main editor). */
+.code:has(>#git-review:not([hidden]))>.editor-split{display:none}
+/* PhpStorm-style diff toolbar */
+#git-review .git-diff-toolbar{flex-wrap:wrap;row-gap:3px;gap:6px;min-height:34px;padding:3px 8px;box-sizing:border-box;border-bottom:1px solid var(--ij-border-subtle,var(--border))}
+.git-diff-icons{display:flex;align-items:center;gap:2px;flex:none}
+#git-review .git-diff-icons button{width:26px;height:26px;padding:5px;border:0;border-radius:var(--ij-control-radius,4px);background:transparent;color:var(--ij-text-secondary,var(--muted))}
+#git-review .git-diff-icons button:hover:not(:disabled){background:var(--ij-hover,var(--hover));color:var(--ij-text,var(--text))}
+#git-review .git-diff-icons button:disabled{opacity:.4}
+.git-diff-icons svg{width:16px;height:16px;display:block}
+.git-diff-separator{width:1px;height:16px;margin:0 4px;background:var(--ij-border,var(--border))}
+#git-review .git-diff-toolbar select{flex:none;width:auto;max-width:220px;height:26px;padding:0 6px;font-size:12px;color:var(--ij-text,var(--text));background:var(--ij-field,var(--surface));border:1px solid var(--ij-control-border,var(--border));border-radius:var(--ij-control-radius,4px)}
+#git-diff-count{margin-left:auto;flex:none;font-size:12px;color:var(--ij-text,var(--text));white-space:nowrap}
+.git-diff-actions{display:flex;gap:6px;flex:none}
+#git-review .git-diff-actions button{font-size:12px;height:24px;padding:0 8px;white-space:nowrap}
+.git-diff-header{display:flex;align-items:center;gap:12px;padding:5px 12px;font-size:12px;border-bottom:1px solid var(--ij-border-subtle,var(--border))}
+.git-diff-header strong{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.git-diff-header #git-sides{padding:0;border:0;white-space:nowrap;color:var(--ij-text-secondary,var(--muted))}
+.git-diff-header .git-diff-actions{margin-left:auto}
+#git-review[data-highlight=lines] .char-insert,#git-review[data-highlight=lines] .char-delete,#git-review[data-highlight=none] .char-insert,#git-review[data-highlight=none] .char-delete,#git-review[data-highlight=none] .line-insert,#git-review[data-highlight=none] .line-delete{background:transparent!important}
+/* Agent selection and AI message: icon-only with hover tooltip */
+.git-agent-selection.git-agent-icons{display:flex;align-items:center;gap:2px;padding:0 0 0 4px;margin-left:4px;border:0;border-left:1px solid var(--ij-border,var(--border));flex:none}
+.git-agent-ask{position:relative}
+.git-agent-count{position:absolute;right:0;bottom:0;min-width:11px;height:11px;padding:0 2px;box-sizing:border-box;border-radius:6px;background:var(--ij-focus,var(--accent));color:white;font:600 8px/11px var(--ij-font-ui,sans-serif);text-align:center}
+#git-panel .git-commit-toolbar button:disabled{opacity:.4}
+#git-panel .git-generate-message{width:24px;height:24px;padding:4px;border:0;border-radius:4px;background:transparent;color:var(--ij-text-secondary,var(--muted));flex:none}
+#git-panel .git-generate-message:hover:not(:disabled){background:var(--ij-hover,var(--hover));color:var(--ij-text,var(--text))}
+#git-panel .git-generate-message:disabled{opacity:.4}
+.git-generate-message svg{width:16px;height:16px;display:block}
+#git-panel .git-commit-toolbar{flex-wrap:wrap;height:auto;min-height:32px;row-gap:2px}

@@ -188,9 +188,9 @@ async fn project_account_sets_author_and_push_credential() {
             dispatch_with(&root, "gitOperation", &[json!({"kind":"push","target":"","expectedHead":st["head"]})], Some(&accounts)).await
         }
     };
-    // Sem conta escolhida: erro recuperável que a interface converte em escolha.
-    let error = commit("first").await.unwrap_err();
-    assert!(error.starts_with(ACCOUNT_REQUIRED), "{}", error);
+    // Sem conta escolhida no projeto: vale a conta padrão (✓ em Bob), sem bloquear o commit.
+    commit("zero").await.unwrap();
+    assert_eq!(command(&root, &["log", "-1", "--format=%an"]), "Bob Fake");
     dispatch(&accounts, &root, "gitAccountsUse", &[alice.clone()]).await.unwrap();
     commit("first").await.unwrap();
     assert_eq!(command(&root, &["log", "-1", "--format=%an <%ae>|%cn <%ce>"]), "Alice Fake <alice@example.invalid>|Alice Fake <alice@example.invalid>");

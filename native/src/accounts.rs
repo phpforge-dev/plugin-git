@@ -293,13 +293,11 @@ impl Accounts {
         let missing = binding.as_deref().is_some_and(|b| b != SYSTEM) && account.is_none();
         Ok(json!({"binding":binding,"account":account,"missing":missing}))
     }
-    /// Conta do projeto para commit/push; erro com `ACCOUNT_REQUIRED` quando falta escolha.
+    /// Conta do projeto para commit/push. Sem escolha no projeto vale a conta padrão (✓) e,
+    /// sem contas, a configuração do Git do sistema, como no PhpStorm: nada bloqueia o commit.
     async fn resolve(&self, root: &Path) -> Res<Option<Value>> {
         match Self::binding(root).await.as_deref() {
-            None => Err(format!(
-                "{}Escolha a conta Git deste projeto antes de continuar.",
-                ACCOUNT_REQUIRED
-            )),
+            None => Ok(self.list()?.into_iter().find(|a| a["default"] == true)),
             Some(SYSTEM) => Ok(None),
             Some(id) => match self.find(id)? {
                 Some(a) => Ok(Some(a)),

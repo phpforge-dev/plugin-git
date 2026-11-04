@@ -1,8 +1,8 @@
 {
   "id": "phpforge.git",
   "name": "Git",
-  "version": "1.2.0",
-  "minIdeVersion": "0.2.19",
+  "version": "1.3.0",
+  "minIdeVersion": "0.2.20",
   "main": "main.js",
   "description": "git workbench integration with explicit host services.",
   "activation": {

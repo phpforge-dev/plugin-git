@@ -770,6 +770,7 @@ pub async fn dispatch_with(
             run_env(root, "git", &argv, None, &env).await?;
             Ok(json!(reference(root, "HEAD").await))
         }
+        "gitLog" if a(0).is_object() => log_filter::log(root, a(0)).await,
         "gitLog" => {
             let requested = args.first().and_then(Value::as_str).unwrap_or("HEAD");
             if requested != "HEAD" && requested != "--all" {
@@ -814,8 +815,9 @@ pub async fn dispatch_with(
             let b = branches(root).await?;
             let r = git(root, &["remote"]).await?;
             let stash = git(root, &["stash", "list", "--format=%gd%x00%s"]).await?;
+            let user = config(root, "user.name", false).await.unwrap_or_default();
             Ok(
-                json!({"branches":b,"remotes":r.lines().collect::<Vec<_>>(),"stashes":stash.lines().map(|l|{let(ref_,subject)=l.split_once('\0').unwrap_or((l,""));json!({"ref":ref_,"subject":subject})}).collect::<Vec<_>>()}),
+                json!({"user":user,"branches":b,"remotes":r.lines().collect::<Vec<_>>(),"stashes":stash.lines().map(|l|{let(ref_,subject)=l.split_once('\0').unwrap_or((l,""));json!({"ref":ref_,"subject":subject})}).collect::<Vec<_>>()}),
             )
         }
         "gitHistory" => history(root, s(a(0))?).await,
@@ -1161,6 +1163,8 @@ mod extra;
 mod extra_scenarios;
 #[path = "line_staging.rs"]
 mod line_staging;
+#[path = "log_filter.rs"]
+mod log_filter;
 #[cfg(test)]
 #[path = "git_scenarios.rs"]
 mod scenarios;

@@ -312,3 +312,113 @@ async fn stages_and_unstages_individual_lines_preserving_disk() {
     .await
     .is_err());
 }
+
+#[tokio::test]
+async fn log_filters_by_branch_user_date_path_text_and_hash() {
+    let (_dir, root) = repo();
+    let first = commit(&root, "a.php", "a", "Initial user class");
+    command(&root, &["switch", "-qc", "feature/login"]);
+    commit_as(
+        &root,
+        "login.php",
+        "l",
+        "Add login helper",
+        "Bruno Dev <bruno@example.invalid>",
+        "2026-10-10T09:00:00",
+    );
+    command(&root, &["switch", "-q", "main"]);
+    commit_as(
+        &root,
+        "a.php",
+        "b",
+        "Rename default user",
+        "Ana Fixture <ana@example.invalid>",
+        "2026-10-20T09:00:00",
+    );
+    command(&root, &["tag", "v1.0", &first]);
+    let log = |filter: Value| {
+        let root = root.clone();
+        async move { dispatch(&root, "gitLog", &[filter]).await.unwrap() }
+    };
+    let subjects = |v: &Value| {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["subject"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        subjects(&log(json!({"ref":"HEAD"})).await),
+        ["Rename default user", "Initial user class"]
+    );
+    assert_eq!(
+        log(json!({"refs":["--all"]}))
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    assert_eq!(
+        subjects(&log(json!({"refs":["refs/heads/feature/login"]})).await),
+        ["Add login helper", "Initial user class"]
+    );
+    assert_eq!(
+        subjects(&log(json!({"refs":["--all"],"authors":["Bruno Dev"]})).await),
+        ["Add login helper"]
+    );
+    assert_eq!(
+        log(json!({"refs":["--all"],"authors":["Bruno"]}))
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+        0,
+        "user filter matches whole names"
+    );
+    assert_eq!(
+        subjects(&log(json!({"refs":["--all"],"since":"2026-10-15"})).await),
+        ["Rename default user"]
+    );
+    assert_eq!(
+        subjects(&log(json!({"refs":["--all"],"until":"2026-10-05"})).await),
+        ["Initial user class"]
+    );
+    assert_eq!(
+        subjects(&log(json!({"refs":["--all"],"paths":["login.php"]})).await),
+        ["Add login helper"]
+    );
+    assert_eq!(
+        subjects(&log(json!({"refs":["--all"],"text":"LOGIN"})).await),
+        ["Add login helper"]
+    );
+    assert_eq!(
+        log(json!({"refs":["--all"],"text":"LOGIN","matchCase":true}))
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+    assert_eq!(
+        subjects(&log(json!({"refs":["--all"],"text":"^(Add|Rename) ","regex":true})).await).len(),
+        2
+    );
+    assert_eq!(
+        subjects(&log(json!({"refs":["--all"],"text":&first[..8]})).await),
+        ["Initial user class"]
+    );
+    let tagged = log(json!({"refs":["refs/tags/v1.0"]})).await;
+    assert!(tagged[0]["refs"].as_str().unwrap().contains("tag: v1.0"));
+    assert!(
+        dispatch(&root, "gitLog", &[json!({"refs":["--output=/tmp/x"]})])
+            .await
+            .is_err()
+    );
+    assert!(dispatch(&root, "gitLog", &[json!({"since":"yesterday"})])
+        .await
+        .is_err());
+    assert!(dispatch(&root, "gitLog", &[json!({"paths":["../x"]})])
+        .await
+        .is_err());
+}

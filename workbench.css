@@ -397,3 +397,15 @@ main.git-open.left-hidden{--left-size:0px}
 .git-revision-head{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-bottom:1px solid var(--border);font-size:12px}
 .git-revision-head strong{flex:1;font-weight:500}
 #git-revision-editor{flex:1;min-height:0}
+/* Changelists: active list in bold (observed G-13), others regular; drop target while dragging a file. */
+#git-panel #git-changes details.git-changelist:not(.git-changelist-active)>summary strong{font-weight:400}
+#git-panel #git-changes details.git-changelist.git-drop>summary{outline:1px dashed var(--ij-focus,var(--accent));outline-offset:-1px}
+.git-changelist-dialog{min-width:440px;padding:16px 18px;border:1px solid var(--ij-popup-border,var(--border));border-radius:var(--ij-island-radius,10px);background:var(--ij-dialog,var(--panel));color:var(--ij-text,var(--text))}
+.git-changelist-dialog h2{font-size:13px;margin:0 0 14px;font-weight:600}
+.git-cl-row{display:grid;grid-template-columns:90px 1fr;align-items:center;gap:8px;margin:0 0 10px;font-size:13px}
+.git-cl-comment{align-items:start}.git-cl-comment span{padding-top:4px}
+.git-cl-row input,.git-cl-row textarea{font:inherit;padding:4px 7px;border:1px solid var(--ij-control-border,var(--border));border-radius:var(--ij-control-radius,4px);background:transparent;color:inherit}
+.git-cl-check{display:inline-flex;align-items:center;gap:6px;font-size:13px;margin-right:16px}
+.git-cl-error{color:var(--ij-error,#e06c75);min-height:1em;margin:6px 0;font-size:12px}
+.git-cl-buttons{display:flex;justify-content:flex-end;gap:8px}
+.git-cl-buttons button{min-width:72px;height:28px;border-radius:var(--ij-control-radius,4px)}

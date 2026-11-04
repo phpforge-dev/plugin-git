@@ -133,3 +133,84 @@ async fn blame_annotates_buffer_with_commit_details_and_uncommitted_lines() {
     .await
     .is_err());
 }
+
+#[tokio::test]
+async fn changelists_assign_new_changes_to_active_list_and_survive_moves() {
+    let (_dir, root) = repo();
+    commit(&root, "a.php", "a\n", "a");
+    commit(&root, "b.php", "b\n", "b");
+    fs::write(root.join("a.php"), "a2\n").unwrap();
+    fs::write(root.join("b.php"), "b2\n").unwrap();
+    fs::write(root.join("new.txt"), "n").unwrap();
+    let call = |input: Value| {
+        let root = root.clone();
+        async move { dispatch(&root, "gitChangelists", &[input]).await }
+    };
+    let lists = call(json!({"action":"list"})).await.unwrap();
+    assert_eq!(lists["lists"][0]["name"], "Changes");
+    assert_eq!(lists["lists"][0]["active"], true);
+    assert_eq!(
+        lists["lists"][0]["files"],
+        json!(["a.php", "b.php"]),
+        "untracked stays in Unversioned Files"
+    );
+    // Move to Another Changelist com nome novo e "Set active".
+    let moved = call(json!({"action":"move","paths":["b.php"],"name":"Refactor","comment":"wip","setActive":true})).await.unwrap();
+    let refactor = moved["lists"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["name"] == "Refactor")
+        .unwrap()
+        .clone();
+    assert_eq!(refactor["files"], json!(["b.php"]));
+    assert_eq!(refactor["active"], true);
+    // Mudança nova entra na changelist ativa.
+    commit(&root, "c.php", "c\n", "c");
+    fs::write(root.join("c.php"), "c2\n").unwrap();
+    let after = call(json!({"action":"list"})).await.unwrap();
+    let find = |v: &Value, name: &str| {
+        v["lists"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|l| l["name"] == name)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(find(&after, "Refactor")["files"], json!(["b.php", "c.php"]));
+    assert_eq!(find(&after, "Changes")["files"], json!(["a.php"]));
+    // A ativa não pode ser excluída; excluir outra devolve os arquivos para a ativa.
+    let id = refactor["id"].as_str().unwrap();
+    assert!(call(json!({"action":"delete","id":id})).await.is_err());
+    let default = find(&after, "Changes")["id"].as_str().unwrap().to_string();
+    call(json!({"action":"set-active","id":default}))
+        .await
+        .unwrap();
+    assert!(
+        call(json!({"action":"create","name":"refactor"}))
+            .await
+            .is_err(),
+        "names are unique ignoring case"
+    );
+    let deleted = call(json!({"action":"delete","id":id})).await.unwrap();
+    assert_eq!(deleted["lists"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        deleted["lists"][0]["files"],
+        json!(["a.php", "b.php", "c.php"])
+    );
+    // Arquivo commitado sai da lista; metadados ficam no git-dir, fora da árvore de trabalho.
+    command(&root, &["commit", "-qam", "all"]);
+    assert_eq!(
+        call(json!({"action":"list"})).await.unwrap()["lists"][0]["files"],
+        json!([])
+    );
+    assert!(command(&root, &["status", "--porcelain"])
+        .lines()
+        .all(|l| l.contains("new.txt")));
+    assert!(
+        call(json!({"action":"move","paths":["new.txt"],"name":"X"}))
+            .await
+            .is_err()
+    );
+}

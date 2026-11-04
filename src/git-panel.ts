@@ -9,6 +9,8 @@ import { mountGitAccounts, accountError, describeAccount } from './git-accounts'
 import { gitLogView } from './git-log-view';
 
 import { gitTools } from './git-tools';
+import { changelistDialog, closeChangelistDialog, findList, groupByChangelist, listLabel, type Changelist } from './git-changelists';
+import { showMenu, closeMenus } from './git-menu';
 
 
 export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace: () => Promise<void>) {
@@ -204,16 +206,25 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   }
   function render() {
     const list = el('git-changes'); list.replaceChildren();
-    const groups = [
-      ['Conflitos · clique para resolver', state!.changes.filter(c => conflictStatus(c.index + c.worktree))],
-      [tr('Alterações'), state!.changes.filter(c => c.index !== '?' && !conflictStatus(c.index + c.worktree))],
-      [tr('Não rastreados'), state!.changes.filter(c => c.index === '?')],
-    ] as const;
-    for (const [label, changes] of groups) {
-      if(!changes.length)continue;const group=document.createElement('details');group.open=true;const heading=document.createElement('summary');const title=document.createElement('strong');title.textContent=tr(label);const count=document.createElement('small');count.textContent=changes.length===1?tr('1 arquivo'):msg`${changes.length} arquivos`;heading.append(title,count);group.append(heading);list.append(group);
-      if(!label.startsWith('Conflitos')){const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.setAttribute('aria-label',tr(label));const indexed=changes.filter(c=>c.index!==' '&&c.index!=='?');checkbox.checked=indexed.length===changes.length;checkbox.indeterminate=indexed.length>0&&indexed.length<changes.length;checkbox.onclick=e=>e.stopPropagation();checkbox.onchange=()=>void prepareFiles(changes.map(c=>c.path),checkbox.checked);heading.prepend(checkbox);}
+    const tracked = state!.changes.filter(c => c.index !== '?' && !conflictStatus(c.index + c.worktree));
+    type Group = {label: string; changes: GitChange[]; conflicts?: boolean; changelist?: Changelist};
+    const groups: Group[] = [{label: tr('Conflitos · clique para resolver'), changes: state!.changes.filter(c => conflictStatus(c.index + c.worktree)), conflicts: true}];
+    // Changelists (PhpStorm): uma por grupo, a ativa em negrito; sem o serviço, um grupo único como antes.
+    if (lists?.length) for (const {list: changelist, changes} of groupByChangelist(lists, tracked)) groups.push({label: listLabel(changelist), changes, changelist});
+    else groups.push({label: tr('Alterações'), changes: tracked});
+    groups.push({label: tr('Não rastreados'), changes: state!.changes.filter(c => c.index === '?')});
+    for (const {label, changes, conflicts, changelist} of groups) {
+      if(!changes.length&&!changelist)continue;const group=document.createElement('details');group.open=true;const heading=document.createElement('summary');const title=document.createElement('strong');title.textContent=label;const count=document.createElement('small');count.textContent=!changes.length?'':changes.length===1?tr('1 arquivo'):msg`${changes.length} arquivos`;heading.append(title,count);group.append(heading);list.append(group);
+      if(changelist){group.classList.add('git-changelist');group.dataset.changelist=changelist.id;group.classList.toggle('git-changelist-active',changelist.active);if(changelist.comment)heading.title=changelist.comment;
+        heading.addEventListener('contextmenu',event=>{event.preventDefault();heading.click();changelistMenu(changelist,event.clientX,event.clientY);});
+        heading.addEventListener('keydown',event=>{if(event.key==='F2'){event.preventDefault();void editChangelist(changelist);}else if(event.key===' '&&event.ctrlKey){event.preventDefault();void changelistAction({action:'set-active',id:changelist.id});}});
+        // Arrastar arquivos entre changelists.
+        group.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('application/x-phpforge-path')){event.preventDefault();group.classList.add('git-drop');}});
+        group.addEventListener('dragleave',()=>group.classList.remove('git-drop'));
+        group.addEventListener('drop',event=>{group.classList.remove('git-drop');const path=event.dataTransfer?.getData('application/x-phpforge-path');if(!path)return;event.preventDefault();if(!changelist.files.includes(path))void changelistAction({action:'move',paths:[path],target:changelist.id});});}
+      if(!conflicts&&changes.length){const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.setAttribute('aria-label',label);const indexed=changes.filter(c=>c.index!==' '&&c.index!=='?');checkbox.checked=indexed.length===changes.length;checkbox.indeterminate=indexed.length>0&&indexed.length<changes.length;checkbox.onclick=e=>e.stopPropagation();checkbox.onchange=()=>void prepareFiles(changes.map(c=>c.path),checkbox.checked);heading.prepend(checkbox);}
       heading.addEventListener('click',()=>{panel.querySelectorAll('summary').forEach(row=>row.classList.remove('selected'));heading.classList.add('selected');});
-      if (label.startsWith('Conflitos') && changes.length) {
+      if (conflicts && changes.length) {
         // Mesmas ações da notificação do PhpStorm durante um merge com conflitos.
         const actions = document.createElement('div'); actions.className = 'git-conflict-actions';
         const all = document.createElement('button'); all.textContent = tr('Resolver conflitos…'); all.onclick = () => void operations.conflicts();
@@ -231,6 +242,9 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
         button.textContent = change.path.split('/').pop()!; button.prepend(fileIcon(change.path));const directory=document.createElement('small');directory.className='git-file-directory';directory.textContent=change.path.includes('/')?change.path.slice(0,change.path.lastIndexOf('/')):'';button.append(directory);button.dataset.status=change.index==='?'?'?':prepared?change.index:change.worktree;
         button.title = change.originalPath ? `${change.originalPath} → ${change.path}` : change.path;
         button.onclick = () => { void (conflictStatus(change.index + change.worktree) ? operations.resolve(change.path) : showDiff(change.path, prepared)); };const row=document.createElement('div');row.className='git-change-row';
+        if(changelist){button.draggable=true;button.addEventListener('dragstart',event=>{event.dataTransfer?.setData('application/x-phpforge-path',change.path);});
+          button.addEventListener('contextmenu',event=>{event.preventDefault();for(const other of panel.querySelectorAll('.git-file-row.selected'))other.classList.remove('selected');button.classList.add('selected');fileMenu(change,prepared,changelist,event.clientX,event.clientY);});
+          button.addEventListener('keydown',event=>{if(event.key.toLowerCase()==='m'&&event.shiftKey&&(event.metaKey||event.ctrlKey)){event.preventDefault();void moveToChangelist([change.path]);}});}
         if(!conflictStatus(change.index+change.worktree)){const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=change.index!==' '&&change.index!=='?';checkbox.indeterminate=checkbox.checked&&change.worktree!==' ';checkbox.setAttribute('aria-label',msg`Preparar ${change.path}`);checkbox.title=tr('Incluir no index para commit');checkbox.onchange=()=>void prepareFiles([change.path],checkbox.checked);row.append(checkbox);}row.append(button);group.append(row);
       }
     }
@@ -238,11 +252,60 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
     if (!state!.changes.length) { const p = document.createElement('p'); p.textContent = state!.mergeHead ? tr('Conteúdo sem alterações. Conclua o merge com um commit.') : tr('Nenhuma alteração. Diretório de trabalho limpo.'); list.append(p); }
     commitEnabled();
   }
+  /** Changelists: lidas junto com o status quando ele muda; host sem o serviço mantém o grupo único. */
+  let lists: Changelist[] | undefined;
+  async function loadLists() {
+    try { lists = (await api.gitChangelists({action: 'list'})).lists; } catch { lists = undefined; }
+  }
+  async function changelistAction(input: Record<string, unknown>) {
+    if (busy) return;
+    try { lists = (await api.gitChangelists(input)).lists; render(); }
+    catch (error) { feedback(String(error instanceof Error ? error.message : error)); }
+  }
+  async function moveToChangelist(paths: string[]) {
+    if (!lists) return;
+    const current = lists.find(l => paths.every(p => l.files.includes(p)));
+    const choice = await changelistDialog({title: tr('Mover para outra changelist'), lists, name: current ? listLabel(current) : '', comment: current?.comment, choose: true});
+    if (!choice) return;
+    const existing = findList(lists, choice.name);
+    await changelistAction(existing ? {action: 'move', paths, target: existing.id, setActive: choice.setActive} : {action: 'move', paths, name: choice.name, comment: choice.comment, setActive: choice.setActive});
+  }
+  async function newChangelist() {
+    if (!lists) return;
+    const choice = await changelistDialog({title: tr('Nova changelist'), lists});
+    if (choice) await changelistAction({action: 'create', name: choice.name, comment: choice.comment, setActive: choice.setActive});
+  }
+  async function editChangelist(changelist: Changelist) {
+    if (!lists) return;
+    const choice = await changelistDialog({title: tr('Editar changelist'), lists, name: changelist.name === 'Changes' && changelist.id === 'default' ? listLabel(changelist) : changelist.name, comment: changelist.comment, setActive: changelist.active});
+    if (choice) await changelistAction({action: 'edit', id: changelist.id, name: changelist.id === 'default' && choice.name === listLabel(changelist) ? changelist.name : choice.name, comment: choice.comment, setActive: choice.setActive});
+  }
+  function changelistMenu(changelist: Changelist, x: number, y: number) {
+    showMenu([
+      {label: tr('Nova changelist…'), run: () => void newChangelist()},
+      {label: tr('Editar changelist…'), shortcut: 'F2', run: () => void editChangelist(changelist)},
+      {label: tr('Definir como changelist ativa'), disabled: changelist.active, run: () => void changelistAction({action: 'set-active', id: changelist.id})},
+      {label: tr('Excluir changelist'), disabled: changelist.active, run: () => void changelistAction({action: 'delete', id: changelist.id})},
+    ], x, y, listLabel(changelist));
+  }
+  function fileMenu(change: GitChange, prepared: boolean, changelist: Changelist, x: number, y: number) {
+    showMenu([
+      {label: tr('Mover para outra changelist…'), shortcut: '⇧⌘M', run: () => void moveToChangelist([change.path])},
+      {label: tr('Mostrar diff'), shortcut: '⌘D', run: () => void showDiff(change.path, prepared)},
+      {label: tr('Ir para o código-fonte'), run: () => { void sdk.host.open(change.path).catch((error: unknown) => feedback(String(error))); }},
+      'separator',
+      {label: tr('Nova changelist…'), run: () => void newChangelist()},
+      {label: tr('Editar changelist…'), shortcut: 'F2', run: () => void editChangelist(changelist)},
+    ], x, y, change.path);
+  }
   async function refresh(force = false) {
     if (loading || busy) return;
     loading = true; const version = generation;
     try {
       const result = await api.gitStatus();
+      if (version !== generation) return;
+      const changed = force || JSON.stringify(result) !== lastState;
+      if (changed) await loadLists();
       if (version !== generation) return;
       state = result; el('git-branch').textContent = `⑂ ${state.branch}${state.mergeHead ? tr(' · merge em andamento') : ''}`;
       const serialized = JSON.stringify(state);
@@ -333,7 +396,8 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   // Poll only while visible; keep a reviewed diff stable until explicitly reopened.
   every(() => { if (!panel.hidden && !dialog.open && document.hasFocus()) void refresh(); }, 3000);
   on(window,'focus', () => { if (!panel.hidden) void refresh(); });
-  return { reset() { void showAccount(); accounts.close(); agentFiles.reset(); commitGeneration.reset(); account.close(); operations.close(); generation++; selectionRequest++; state = undefined; lastState = ''; el<HTMLInputElement>('git-amend').checked=false;pushAfterCommit=false;dialog.close(); closeDiff(); el<HTMLTextAreaElement>('git-message').value = ''; history.reset(); el('git-changes').replaceChildren(); if (!panel.hidden) void refresh(true); } };
+  own(() => { closeChangelistDialog(); closeMenus(); });
+  return { reset() { lists = undefined; void showAccount(); accounts.close(); agentFiles.reset(); commitGeneration.reset(); account.close(); operations.close(); generation++; selectionRequest++; state = undefined; lastState = ''; el<HTMLInputElement>('git-amend').checked=false;pushAfterCommit=false;dialog.close(); closeDiff(); el<HTMLTextAreaElement>('git-message').value = ''; history.reset(); el('git-changes').replaceChildren(); if (!panel.hidden) void refresh(true); } };
 }
 
 function ownEditor(...args:any[]){const v=monaco.editor.createDiffEditor(...args);own(()=>v.dispose());return v;}

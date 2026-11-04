@@ -702,6 +702,7 @@ pub async fn dispatch_with(
             )
         }
         "gitBlame" => blame::blame(root, a(0)).await,
+        "gitChangelists" => changelists::changelists(root, a(0)).await,
         "gitDiff" => diff(root, s(a(0))?, a(1).as_bool().ok_or("Comparação inválida")?).await,
         "gitStage" => {
             let path = s(a(0))?;
@@ -1147,6 +1148,8 @@ pub async fn dispatch_with(
 
 #[path = "blame.rs"]
 mod blame;
+#[path = "changelists.rs"]
+mod changelists;
 #[path = "extra.rs"]
 mod extra;
 #[cfg(test)]

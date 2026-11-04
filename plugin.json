@@ -27,6 +27,7 @@
       "gitApplyHunk",
       "gitBlame",
       "gitBranches",
+      "gitChangelists",
       "gitCommit",
       "gitCommitMessage",
       "gitConflict",

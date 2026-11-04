@@ -14,6 +14,7 @@ import { showMenu, closeMenus } from './git-menu';
 import { lineSelection, countLabel } from './git-line-selection';
 import { tagActions } from './git-tags';
 import { resetActions } from './git-reset';
+import { worktreesView } from './git-worktrees';
 
 
 export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace: () => Promise<void>) {
@@ -338,7 +339,10 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   on(document, 'ide-git-new-tag', () => tags.dialog({context: {head: undefined, reload: async () => history.refresh(), feedback, tools: () => undefined}}));
   const history = gitLogView(api,{diff(path,revision){void showDiff(path,false,revision);},branches(){void operations.branches();},operation(kind,hash){void operations.open(kind,hash);},commit(){el('show-commit').click();},
     extend: (menu, commit, context) => { tags.extendLog(menu, commit, context); resets.extendLog(menu, commit, context); },
+    loaded: tools => { void worktrees.sync(tools?.worktrees); },
+    tabs: () => [{label: 'Worktrees', run: () => worktrees.open()}],
     refMenu: (ref, x, y, context) => { if (ref.kind === 'tag') showMenu(tags.items(ref.name, ref.commit, context, ref.commit ? [{label: 'Checkout', run: () => void resets.checkout(ref.commit!, context)}] : []), x, y, ref.name); }});
+  const worktrees = worktreesView(api, history.panel, {busy: () => busy, setBusy(value) { busy = value; el<HTMLButtonElement>('open').disabled = value; commitEnabled(); }, showLog: () => history.refresh()});
   const resets = resetActions(api, {busy: () => busy, hasUnsaved, setBusy(value) { busy = value; el<HTMLButtonElement>('open').disabled = value; commitEnabled(); }, feedback,
     async changed() { closeDiff(); try { await reloadWorkspace(); } catch (error) { feedback(String(error)); } await refresh(true); }});
   // Annotate → Mostrar diff: diff histórico do arquivo no commit da linha.
@@ -422,7 +426,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   every(() => { if (!panel.hidden && !dialog.open && document.hasFocus()) void refresh(); }, 3000);
   on(window,'focus', () => { if (!panel.hidden) void refresh(); });
   own(() => { closeChangelistDialog(); closeMenus(); });
-  return { reset() { lists = undefined; void showAccount(); accounts.close(); agentFiles.reset(); commitGeneration.reset(); account.close(); operations.close(); generation++; selectionRequest++; state = undefined; lastState = ''; el<HTMLInputElement>('git-amend').checked=false;pushAfterCommit=false;dialog.close(); closeDiff(); el<HTMLTextAreaElement>('git-message').value = ''; history.reset(); el('git-changes').replaceChildren(); if (!panel.hidden) void refresh(true); } };
+  return { reset() { lists = undefined; void showAccount(); accounts.close(); agentFiles.reset(); commitGeneration.reset(); account.close(); operations.close(); generation++; selectionRequest++; state = undefined; lastState = ''; el<HTMLInputElement>('git-amend').checked=false;pushAfterCommit=false;dialog.close(); closeDiff(); el<HTMLTextAreaElement>('git-message').value = ''; history.reset(); worktrees.reset(); el('git-changes').replaceChildren(); if (!panel.hidden) void refresh(true); } };
 }
 
 function ownEditor(...args:any[]){const v=monaco.editor.createDiffEditor(...args);own(()=>v.dispose());return v;}

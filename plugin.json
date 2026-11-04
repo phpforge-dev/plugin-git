@@ -46,7 +46,8 @@
       "gitStage",
       "gitStatus",
       "gitTestAccount",
-      "gitTools"
+      "gitTools",
+      "workspace"
     ]
   }
 }

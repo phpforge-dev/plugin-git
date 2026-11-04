@@ -473,3 +473,19 @@ main.git-open.left-hidden{--left-size:0px}
 .git-reset-target strong{font-weight:600}.git-reset-author{font-family:var(--ij-font-mono,monospace)}
 .git-reset-mode{display:grid;grid-template-columns:20px 1fr;align-items:center;column-gap:6px;margin:8px 0;font-size:13px}
 .git-reset-mode small{grid-column:2;white-space:pre-line;color:var(--ij-text-secondary,var(--muted));font-size:12px;margin-top:3px}
+/* Worktrees tab (G-25): ✓ current, bold name, branch and path columns; left toolbar like the Log. */
+#git-log-panel .git-worktrees-tab{display:inline-flex;align-items:center;gap:4px;border-bottom:0}
+#git-log-panel .git-worktrees-tab button{border:0;background:transparent;color:inherit;font:inherit;padding:2px 6px;border-radius:4px}
+#git-log-panel .git-tab-close{color:var(--ij-text-secondary,var(--muted))!important;font-size:12px!important}
+#git-log-panel #git-log-title.inactive,#git-log-panel .git-worktrees-tab:not(.active){border-color:transparent!important;background:transparent!important;color:var(--ij-text-secondary,var(--muted))!important;cursor:pointer}
+#git-log-panel:has(#git-worktrees:not([hidden])) #git-log-count{visibility:hidden}
+#git-log-more{border:0;background:transparent;color:var(--ij-text-secondary,var(--muted));width:22px;height:22px;border-radius:4px}
+#git-worktrees{display:flex;flex:1;min-height:0}#git-worktrees[hidden]{display:none}
+#git-worktree-list{flex:1;overflow:auto;padding:4px 0}
+.git-worktree-row{display:grid;grid-template-columns:18px minmax(120px,max-content) minmax(90px,max-content) 1fr auto;gap:18px;align-items:center;width:100%;height:24px;padding:0 10px;border:0;background:transparent;color:var(--ij-text,var(--text));font-size:13px;text-align:left}
+.git-worktree-row:hover{background:var(--ij-list-hover,var(--hover))}.git-worktree-row[aria-selected=true]{background:var(--ij-selection,var(--selection))}
+.git-worktree-row strong{font-weight:600}.git-worktree-mark{color:var(--ij-text-secondary,var(--muted))}
+.git-worktree-branch,.git-worktree-path,.git-worktree-state{color:var(--ij-text-secondary,var(--muted));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.git-worktree-dialog select{font:inherit;padding:4px 6px;border:1px solid var(--ij-control-border,var(--border));border-radius:4px;background:transparent;color:inherit}
+.git-wt-new span{display:flex;align-items:center;gap:4px}.git-wt-new em{font-style:normal}
+.git-wt-hint{margin:0 0 6px 98px;color:var(--ij-text-secondary,var(--muted));font-size:12px;min-height:1em}

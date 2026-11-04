@@ -535,6 +535,86 @@ async fn reset_modes_match_git_semantics() {
 }
 
 #[tokio::test]
+async fn worktrees_list_create_from_branch_or_new_branch_and_remove() {
+    let (dir, root) = repo();
+    commit(&root, "a", "1", "one");
+    command(&root, &["branch", "feature/report"]);
+    let place = dir.path().canonicalize().unwrap();
+    let wt = place.join("project-report");
+    let created = op(
+        &root,
+        json!({"kind":"worktree-add","target":wt.to_str().unwrap(),"branch":"feature/report"}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(created, wt.to_str().unwrap());
+    let fresh = place.join("project-fresh");
+    op(&root, json!({"kind":"worktree-add","target":fresh.to_str().unwrap(),"branch":"main","newBranch":"feature/fresh"})).await.unwrap();
+    let list = dispatch(&root, "gitTools", &[]).await.unwrap()["worktrees"].clone();
+    let items = list.as_array().unwrap();
+    assert_eq!(items.len(), 3);
+    assert_eq!(items[0]["main"], true);
+    assert_eq!(items[0]["current"], true);
+    assert_eq!(items[0]["branch"], "main");
+    assert!(items
+        .iter()
+        .any(|w| w["branch"] == "feature/report" && w["name"] == "project-report"));
+    assert!(items.iter().any(|w| w["branch"] == "feature/fresh"));
+    // Restrições do PhpStorm: branch já aberta, destino existente, dentro do projeto, principal.
+    assert!(op(&root, json!({"kind":"worktree-add","target":place.join("x").to_str().unwrap(),"branch":"feature/report"})).await.is_err());
+    assert!(op(
+        &root,
+        json!({"kind":"worktree-add","target":wt.to_str().unwrap(),"branch":"main","newBranch":"y"})
+    )
+    .await
+    .is_err());
+    assert!(op(&root, json!({"kind":"worktree-add","target":root.join("inner").to_str().unwrap(),"branch":"main","newBranch":"z"})).await.is_err());
+    assert!(op(
+        &root,
+        json!({"kind":"worktree-add","target":"relative","branch":"main","newBranch":"w"})
+    )
+    .await
+    .is_err());
+    assert!(op(
+        &root,
+        json!({"kind":"worktree-remove","target":root.to_str().unwrap()})
+    )
+    .await
+    .is_err());
+    // Worktree com alteração não é excluído (commit antes, como pede o PhpStorm).
+    fs::write(wt.join("dirty"), "x").unwrap();
+    assert!(op(
+        &root,
+        json!({"kind":"worktree-remove","target":wt.to_str().unwrap()})
+    )
+    .await
+    .is_err());
+    fs::remove_file(wt.join("dirty")).unwrap();
+    op(
+        &root,
+        json!({"kind":"worktree-remove","target":wt.to_str().unwrap()}),
+    )
+    .await
+    .unwrap();
+    // Pasta apagada manualmente fica "prunable" até Prune.
+    fs::remove_dir_all(&fresh).unwrap();
+    let pruned = dispatch(&root, "gitTools", &[]).await.unwrap()["worktrees"].clone();
+    assert!(pruned
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|w| w["prunable"].is_string()));
+    op(&root, json!({"kind":"worktree-prune"})).await.unwrap();
+    assert_eq!(
+        dispatch(&root, "gitTools", &[]).await.unwrap()["worktrees"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
 async fn new_branch_and_checkout_from_log_commit() {
     let (_dir, root) = repo();
     let first = commit(&root, "a", "1", "one");

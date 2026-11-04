@@ -9,7 +9,7 @@ import {showMenu, closeMenus, type MenuEntry} from './git-menu';
 type Commit = GitCommit & {email?: string; committer?: string};
 type Filters = {refs: string[]; authors: string[]; since: string; until: string; paths: string[]; text: string; regex: boolean; matchCase: boolean};
 type Hooks = {diff(path: string, revision: string): void; branches(): void; operation(kind: 'revert' | 'cherry-pick', hash: string): void; commit(): void; extend?(menu: MenuEntry[], commit: Commit, context: LogContext): void;
-  refMenu?(ref: {name: string; kind: string; commit?: string}, x: number, y: number, context: LogContext): void};
+  refMenu?(ref: {name: string; kind: string; commit?: string}, x: number, y: number, context: LogContext): void; loaded?(tools: any): void; tabs?(): MenuEntry[]};
 export type LogContext = {head: string | undefined; reload(): Promise<void>; feedback(text: string): void; tools(): any};
 
 const ROW = 26, LANE = 12;
@@ -32,7 +32,7 @@ export function logDate(iso: string, now = new Date()): string {
 export function gitLogView(api: any, hooks: Hooks) {
   const panel = document.createElement('section'); panel.id = 'git-log-panel'; panel.hidden = true;
   panel.innerHTML = html`<div class="tool-window-resize" id="git-log-resize" role="separator" tabindex="0" aria-label="Altura do Git" aria-orientation="horizontal"></div>
- <div class="tool-window-head"><strong>Git</strong><span class="tool-window-tab" id="git-log-title">Log</span><span id="git-log-tabs"></span><button id="git-log-commit">Commit</button><span class="tool-window-space"></span><span id="git-log-count"></span><button id="git-log-hide" aria-label="Ocultar Git">−</button></div>
+ <div class="tool-window-head"><strong>Git</strong><span class="tool-window-tab" id="git-log-title">Log</span><span id="git-log-tabs"></span><button type="button" id="git-log-more" aria-label="Mais abas">⌄</button><button id="git-log-commit">Commit</button><span class="tool-window-space"></span><span id="git-log-count"></span><button id="git-log-hide" aria-label="Ocultar Git">−</button></div>
  <div class="git-log-body"><div class="git-log-actions"><button id="git-log-refresh" title="Atualizar histórico"></button><button id="git-log-branches" title="Branches e operações…"></button><button id="git-toggle-branches" title="Ocultar branches" aria-pressed="true"></button></div>
  <div class="git-log-layout"><nav class="git-refs-pane" aria-label="Branches do histórico"><input id="git-branch-search" type="search" placeholder="Branch ou tag" aria-label="Buscar branches ou tags"><div id="git-log-refs" role="tree"></div></nav>
  <section class="git-commits-pane"><div class="git-log-toolbar"><span class="git-log-search-box"><input id="git-log-search" type="search" aria-label="Texto ou hash" placeholder="Texto ou hash"><button type="button" id="git-log-regex" class="git-log-toggle" aria-pressed="false" title="Regex">.*</button><button type="button" id="git-log-case" class="git-log-toggle" aria-pressed="false" title="Diferenciar maiúsculas">Cc</button></span>
@@ -268,7 +268,7 @@ export function gitLogView(api: any, hooks: Hooks) {
       if (filters.text.trim()) { request.text = filters.text.trim(); request.regex = filters.regex; request.matchCase = filters.matchCase; }
       const [loadedTools, commits, status] = await Promise.all([api.gitTools().catch(() => undefined), api.gitLog(request), api.gitStatus().catch(() => undefined)]);
       if (token !== epoch) return;
-      tools = loadedTools ?? {branches: await api.gitBranches().catch(() => []), remotes: [], tags: [], user: ''};
+      tools = loadedTools ?? {branches: await api.gitBranches().catch(() => []), remotes: [], tags: [], user: ''}; hooks.loaded?.(tools);
       entries = commits; truncated = commits.length >= 1000;
       head = entries.find(c => /(^|, )HEAD( ->|,|$)/.test(c.refs ?? ''))?.hash ?? status?.head ?? undefined;
       onBranch = reachable(entries, head);
@@ -299,6 +299,7 @@ export function gitLogView(api: any, hooks: Hooks) {
   on(document, 'ide-git-show-commit', (event: Event) => { const detail = (event as CustomEvent).detail ?? {}; if (typeof detail.hash === 'string') void reveal(detail.hash, detail.path); });
   button.onclick = () => panel.hidden ? void open() : hide(); el('git-log-hide').onclick = hide; el('git-log-refresh').onclick = () => void load(); el('git-log-branches').onclick = hooks.branches; el('git-log-commit').onclick = hooks.commit;
   el<HTMLInputElement>('git-branch-search').oninput = renderBranches;
+  el('git-log-more').onclick = () => { const r = el('git-log-more').getBoundingClientRect(); const items = hooks.tabs?.() ?? []; if (items.length) showMenu(items, r.left, r.bottom + 2, tr('Abas do Git')); };
   el('git-history-revert').onclick = () => { if (selected) hooks.operation('revert', selected); };
   el('git-history-pick').onclick = () => { if (selected) hooks.operation('cherry-pick', selected); };
   return {

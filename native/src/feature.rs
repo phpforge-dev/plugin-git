@@ -816,9 +816,10 @@ pub async fn dispatch_with(
             let r = git(root, &["remote"]).await?;
             let stash = git(root, &["stash", "list", "--format=%gd%x00%s"]).await?;
             let tags = tags::tags(root).await?;
+            let worktrees = worktrees::worktrees(root).await?;
             let user = config(root, "user.name", false).await.unwrap_or_default();
             Ok(
-                json!({"tags":tags,"user":user,"branches":b,"remotes":r.lines().collect::<Vec<_>>(),"stashes":stash.lines().map(|l|{let(ref_,subject)=l.split_once('\0').unwrap_or((l,""));json!({"ref":ref_,"subject":subject})}).collect::<Vec<_>>()}),
+                json!({"tags":tags,"worktrees":worktrees,"user":user,"branches":b,"remotes":r.lines().collect::<Vec<_>>(),"stashes":stash.lines().map(|l|{let(ref_,subject)=l.split_once('\0').unwrap_or((l,""));json!({"ref":ref_,"subject":subject})}).collect::<Vec<_>>()}),
             )
         }
         "gitHistory" => history(root, s(a(0))?).await,
@@ -988,6 +989,9 @@ pub async fn dispatch_with(
                 return result;
             }
             if let Some(result) = reset::operation(root, kind, input).await {
+                return result;
+            }
+            if let Some(result) = worktrees::operation(root, kind, input).await {
                 return result;
             }
             if [
@@ -1184,6 +1188,8 @@ mod log_filter;
 mod reset;
 #[path = "tags.rs"]
 mod tags;
+#[path = "worktrees.rs"]
+mod worktrees;
 #[cfg(test)]
 #[path = "git_scenarios.rs"]
 mod scenarios;

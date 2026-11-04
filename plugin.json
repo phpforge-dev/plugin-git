@@ -25,6 +25,7 @@
       "gitAccountsSave",
       "gitAccountsUse",
       "gitApplyHunk",
+      "gitBlame",
       "gitBranches",
       "gitCommit",
       "gitCommitMessage",

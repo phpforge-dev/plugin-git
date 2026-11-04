@@ -68,6 +68,9 @@ export function gitLogView(api:IdeApi,hooks:{diff(path:string,revision:string):v
   }catch(error){if(token===epoch){entries=[];branches=[];el('git-log-refs').replaceChildren();render();feedback(String(error));}}
  }
  async function open(){show();await load();}
+ /** Annotate → clique na anotação: abre o Log e seleciona o commit (todas as branches se não estiver na atual). */
+ async function reveal(hash:string){show();if(!entries.some(c=>c.hash===hash)){ref='--all';}await load();const commit=entries.find(c=>c.hash===hash);if(!commit){feedback(tr('Commit não encontrado no histórico carregado.'));return;}await choose(commit);panel.querySelector<HTMLElement>(`[data-hash="${hash}"]`)?.scrollIntoView({block:'center'});}
+ on(document,'ide-git-show-commit',(event:Event)=>{const hash=(event as CustomEvent).detail?.hash;if(typeof hash==='string')void reveal(hash);});
  button.onclick=()=>panel.hidden?void open():hide();el('git-log-hide').onclick=hide;el('git-log-refresh').onclick=()=>void load();el('git-log-branches').onclick=hooks.branches;el('git-log-commit').onclick=hooks.commit;el<HTMLInputElement>('git-log-search').oninput=render;
  el<HTMLInputElement>('git-branch-search').oninput=renderBranches;el<HTMLSelectElement>('git-ref-filter').onchange=()=>{ref=el<HTMLSelectElement>('git-ref-filter').value;void load();};el<HTMLSelectElement>('git-user-filter').onchange=render;el<HTMLInputElement>('git-date-filter').oninput=render;
  el('git-history-revert').onclick=()=>{if(selectedCommit)hooks.operation('revert',selectedCommit.hash);};el('git-history-pick').onclick=()=>{if(selectedCommit)hooks.operation('cherry-pick',selectedCommit.hash);};

@@ -254,6 +254,8 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
     } finally { loading = false; }
   }
   const history = gitLogView(api,{diff(path,revision){void showDiff(path,false,revision);},branches(){void operations.branches();},operation(kind,hash){void operations.open(kind,hash);},commit(){el('show-commit').click();}});
+  // Annotate → Mostrar diff: diff histórico do arquivo no commit da linha.
+  on(document, 'ide-git-show-diff', (event: Event) => { const {hash, path} = (event as CustomEvent).detail ?? {}; if (hash && path) void showDiff(path, false, hash); });
   el('show-commit').onclick = () => { panel.hidden=false;el('tree').hidden=true;sidebar.querySelector('h3')!.hidden=true;document.querySelector('main')!.classList.add('git-open');void refresh(true);void showAccount(); };
   el('show-project').onclick = () => { panel.hidden=true;el('tree').hidden=false;sidebar.querySelector('h3')!.hidden=false;document.querySelector('main')!.classList.remove('git-open');closeDiff(); };
   el('git-refresh').onclick=()=>{void refresh(true);history.refresh();};

@@ -1,5 +1,6 @@
 import {tr,html,monaco,own,on,every} from './sdk';
 import {diffLines} from 'diff';
+import {blameAnnotator, revisionViewer} from './git-blame';
 type Block = {line: number; end: number; before: string; after: string; kind:'added'|'modified'|'deleted'};
 export function mountEditorChanges(api: IdeApi, editor: monaco.editor.IStandaloneCodeEditor, hooks: {path(): string | undefined; status(text: string): void}) {
  const decorations = editor.createDecorationsCollection(); let blocks: Block[]=[]; let baseline=''; let label=''; let epoch=0;let disposed=false; let timer:ReturnType<typeof setTimeout>; let popup:HTMLElement|undefined; let currentPath: string | undefined;
@@ -52,5 +53,12 @@ export function mountEditorChanges(api: IdeApi, editor: monaco.editor.IStandalon
    close();const root=document.createElement('section');popup=root;root.className='git-line-popup git-line-history';root.setAttribute('role','dialog');root.setAttribute('aria-label',tr('Git: autoria da linha'));const title=document.createElement('strong');title.textContent=info.uncommitted?tr('Alteração ainda não commitada'):`${info.author} · ${info.hash.slice(0,8)}`;const text=document.createElement('p');text.textContent=info.summary;const date=document.createElement('small');date.textContent=info.uncommitted?tr('Buffer atual'):new Date(info.date).toLocaleString();const button=document.createElement('button');button.textContent=tr('Fechar');button.onclick=close;root.append(title,text,date,button);document.body.append(root);const rect=editor.getDomNode()!.getBoundingClientRect();root.style.left=Math.min(rect.left+70,innerWidth-660)+'px';root.style.top=Math.min(rect.top+80,innerHeight-250)+'px';button.focus();hooks.status(tr('Autoria da linha consultada.'));
   }catch(error){hooks.status(`Git: ${String(error)}`);}
  }}));
- const controller={refresh,dispose(){disposed=true;epoch++;markerHost.removeEventListener('mousedown',markerClick,true);clearInterval(poll);clearTimeout(timer);decorations.clear();close();}};own(()=>controller.dispose());return controller;
+ // Annotate with Git Blame: fica ativo por arquivo até "Fechar anotações"; acompanha o buffer não salvo.
+ let viewer:ReturnType<typeof revisionViewer>|undefined; const annotated=new Set<string>(); let blameTimer:ReturnType<typeof setTimeout>|undefined;
+ const blame=blameAnnotator(editor,{path:hooks.path,status:hooks.status,fetch:settings=>api.gitBlame({path:hooks.path(),text:editor.getModel()!.getValue(),...settings}),closed:()=>{const path=hooks.path();if(path)annotated.delete(path);},annotateRevision:(path,revision)=>{viewer??=revisionViewer(api,hooks.status);void viewer.show(path,revision);}});
+ const toggleBlame=async()=>{const path=hooks.path();if(!path)return;if(blame.active){blame.close();annotated.delete(path);}else{annotated.add(path);await blame.open();if(!blame.active)annotated.delete(path);}};
+ own(editor.onDidChangeModel(()=>{blame.close();const path=hooks.path();if(path&&annotated.has(path))queueMicrotask(()=>void blame.open());}));
+ own(editor.onDidChangeModelContent(()=>{if(!blame.active)return;clearTimeout(blameTimer);blameTimer=setTimeout(()=>blame.reload(),600);}));
+ own(editor.addAction({id:'php-ide.gitAnnotate',label:tr('Git: Anotar com Git Blame'),contextMenuGroupId:'git',run:()=>void toggleBlame()}));
+ const controller={refresh,dispose(){disposed=true;clearTimeout(blameTimer);blame.dispose();epoch++;markerHost.removeEventListener('mousedown',markerClick,true);clearInterval(poll);clearTimeout(timer);decorations.clear();close();}};own(()=>controller.dispose());return controller;
 }

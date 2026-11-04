@@ -247,3 +247,64 @@ async fn accounts_without_repository_and_helper_scope() {
     assert_eq!(remote_host("http://127.0.0.1:8080/r.git").unwrap().1, "127.0.0.1:8080");
     assert!(remote_host("git@github.com:a/b.git").is_none());
 }
+
+#[tokio::test]
+async fn expired_github_token_on_push_offers_use_token() {
+    let state = tempfile::tempdir().unwrap();
+    let served = tempfile::tempdir().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let served_root = served.path().canonicalize().unwrap();
+    let root = work.path().canonicalize().unwrap();
+    command(&served_root, &["init", "-q", "--bare", "-b", "main", "remote.git"]);
+    let (port, _) = serve(served_root.clone(), "alice", "good-token").await;
+    let (api, _) = crate::oauth::tests::fake_provider().await;
+    let host = format!("127.0.0.1:{}", port);
+    for args in [
+        &["init", "-q", "-b", "main"][..],
+        &["config", "commit.gpgsign", "false"],
+        &["remote", "add", "origin", &format!("http://{}/remote.git", host)],
+        &["config", "branch.main.remote", "origin"],
+        &["config", "branch.main.merge", "refs/heads/main"],
+    ] {
+        command(&root, args);
+    }
+    let accounts = Accounts::new(state.path().join("git-accounts.json"), Arc::new(MemorySecrets::default()))
+        .with_oauth(crate::oauth::tests::fake_oauth(&api, Default::default()));
+    // Conta GitHub cujo token o servidor não aceita mais (gravada antes de expirar).
+    let id = accounts
+        .save(&json!({"kind":"github","host":host,"login":"alice","name":"Alice Fake","email":"alice@example.invalid","secret":"expired-token"}))
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+    dispatch(&accounts, &root, "gitAccountsUse", &[json!(id)]).await.unwrap();
+    fs::write(root.join("f.txt"), "x").unwrap();
+    command(&root, &["add", "f.txt"]);
+    let st = crate::feature::status(&root).await.unwrap();
+    dispatch_with(&root, "gitCommit", &[json!("one"), st["indexToken"].clone()], Some(&accounts)).await.unwrap();
+    let push = || {
+        let (root, accounts) = (root.clone(), accounts.clone());
+        async move {
+            let st = crate::feature::status(&root).await.unwrap();
+            dispatch_with(&root, "gitOperation", &[json!({"kind":"push","target":"","expectedHead":st["head"]})], Some(&accounts)).await
+        }
+    };
+    let error = push().await.unwrap_err();
+    assert!(error.starts_with(&format!("{}{}] ", TOKEN_REJECTED, id)), "aviso de token expirado com a conta: {}", error);
+    assert!(error.contains("Usar token") && error.contains("alice"), "{}", error);
+    assert!(!error.contains("expired-token"), "o token não aparece na mensagem");
+    // Use Token: token recusado pela API não substitui o salvo.
+    let mut input = accounts.find(&id).unwrap().unwrap();
+    input["secret"] = json!("still-bad");
+    assert!(dispatch(&accounts, &root, "gitAccountsSave", &[input.clone()]).await.unwrap_err().contains(crate::oauth::REJECTED));
+    // Token válido da mesma conta: o push seguinte passa.
+    input["secret"] = json!("good-token");
+    assert_eq!(dispatch(&accounts, &root, "gitAccountsSave", &[input]).await.unwrap(), json!(id));
+    push().await.unwrap();
+    assert_eq!(command(&served_root.join("remote.git"), &["log", "-1", "--format=%s"]), "one");
+    // Conta genérica continua com a mensagem que reabre a escolha.
+    let plain = auth_error("fatal: Authentication failed".into(), Some(&json!({"kind":"generic","login":"x","host":"h","tokenUsed":true})));
+    assert!(plain.starts_with(ACCOUNT_REQUIRED));
+    let ssh = auth_error("fatal: Authentication failed".into(), Some(&json!({"kind":"github","id":"i","login":"x","host":"h"})));
+    assert!(ssh.starts_with(ACCOUNT_REQUIRED), "token não usado (SSH/outro host) não vira aviso de expiração");
+}

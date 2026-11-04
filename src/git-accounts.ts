@@ -7,7 +7,10 @@ type Listing = {accounts:GitHostAccount[];project:ProjectAccount};
 
 export const ACCOUNT_REQUIRED='[git-account] ';
 /** Texto do erro sem o marcador e se ele pede uma (nova) escolha de conta. */
-export function accountError(error:unknown){const text=String(error).replace(/^Error:\s*/,'');return{required:text.includes(ACCOUNT_REQUIRED),text:text.replace(ACCOUNT_REQUIRED,'')};}
+const TOKEN_REJECTED=/\[git-account-token:([^\]]*)\] /;
+/** Texto do erro sem marcadores, se ele pede uma (nova) escolha de conta e, no aviso de token
+ * expirado do push, o id da conta para a ação Usar token. */
+export function accountError(error:unknown){const raw=String(error).replace(/^Error:\s*/,'');const token=TOKEN_REJECTED.exec(raw)?.[1];return{required:raw.includes(ACCOUNT_REQUIRED),token,text:raw.replace(ACCOUNT_REQUIRED,'').replace(TOKEN_REJECTED,'')};}
 const CHANGED='phpforge-git-accounts';
 
 const KINDS=[
@@ -220,6 +223,13 @@ export function mountGitAccounts(api:any){
   const use=q<HTMLButtonElement>(chooser,'git-account-chooser-use');use.disabled=true;
   try{listing.project=await api.gitAccountsUse(value);changed();settle(true);}catch(error){q(chooser,'git-account-chooser-error').textContent=accountError(error).text;}finally{use.disabled=false;}
  };
+ /** Aviso de token expirado no push: "Entrar no GitHub/GitLab" só com o token da conta. */
+ async function useToken(id:string):Promise<boolean>{
+  try{await load();}catch(error){status(accountError(error).text);return false;}
+  const account=listing.accounts.find(a=>a.id===id);if(!account)return false;
+  if(form.open)form.close();openForm(account,account.kind,true);
+  return new Promise(resolve=>{tokenDone=resolve;});
+ }
  /** Garante uma conta válida antes de commit/push; pergunta só quando falta ou foi removida. */
  async function ensure(action:string):Promise<boolean>{
   let current:Listing;try{current=await load();}catch(error){throw Error(accountError(error).text);}
@@ -234,5 +244,5 @@ export function mountGitAccounts(api:any){
  const place=()=>{const host=document.getElementById('appearance-dialog');if(host&&!host.contains(launcher)){const footer=host.querySelector('.appearance-footer');if(footer)footer.before(launcher);else host.append(launcher);}};
  place();const observer=new MutationObserver(place);observer.observe(document.body,{childList:true});own(()=>{observer.disconnect();launcher.remove();});
  async function open(kind?:string){if(kind)page=kind;status('');await refresh();if(!settings.open)settings.showModal();q(settings,'git-accounts-list').focus();}
- return {open,choose,ensure,loginBrowser,load,onChange(fn:()=>void){on(window,CHANGED,fn);},close(){settle(false);form.close();browser.close();settings.close();}};
+ return {open,choose,ensure,useToken,loginBrowser,load,onChange(fn:()=>void){on(window,CHANGED,fn);},close(){settle(false);form.close();browser.close();settings.close();}};
 }

@@ -134,7 +134,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   const feedback = (message: string) => { el('git-feedback').textContent = message; };
   const conflictStatus = (code: string) => ['DD','AU','UD','UA','DU','AA','UU'].includes(code);
   const staged = () => state?.changes.filter(c => c.index !== ' ' && c.index !== '?' && !conflictStatus(c.index + c.worktree)) ?? [];
-  const operations = gitTools(api, { ensureAccount: (kind: string) => accounts.ensure(kind), chooseAccount: (reason: string) => accounts.choose(reason), hasUnsaved, busy: () => busy, setBusy(value) { busy = value; el<HTMLButtonElement>('open').disabled = value; commitEnabled(); if (!value) {void refresh(true);history.refresh();} }, async changed() { closeDiff(); try { await reloadWorkspace(); } catch(error) { feedback(String(error)); } }, feedback });
+  const operations = gitTools(api, { ensureAccount: (kind: string) => accounts.ensure(kind), chooseAccount: (reason: string) => accounts.choose(reason), useToken: (id: string) => accounts.useToken(id), hasUnsaved, busy: () => busy, setBusy(value) { busy = value; el<HTMLButtonElement>('open').disabled = value; commitEnabled(); if (!value) {void refresh(true);history.refresh();} }, async changed() { closeDiff(); try { await reloadWorkspace(); } catch(error) { feedback(String(error)); } }, feedback });
   const account=mountGitAccount(api,()=>busy,value=>{busy=value;el<HTMLButtonElement>('open').disabled=value;commitEnabled();});
   const accounts=mountGitAccounts(api);
   const chooseAccount=()=>accounts.choose(tr('Escolha a conta usada nos commits e pushes deste projeto.'));

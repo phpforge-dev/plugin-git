@@ -27,6 +27,8 @@ const KINDS: [(&str, &str); 4] = [
 pub const SYSTEM: &str = "system";
 /// Prefixo dos erros que a interface trata abrindo a escolha de conta.
 pub const ACCOUNT_REQUIRED: &str = "[git-account] ";
+/// Prefixo `[git-account-token:<id>] ` do aviso de token recusado no push (ação Use Token).
+pub const TOKEN_REJECTED: &str = "[git-account-token:";
 // Só responde `get` para o host e protocolo da conta; não grava nem apaga credenciais.
 const HELPER: &str = r#"!f() { test "$1" = get || exit 0; p=; h=; while IFS= read -r l; do case "$l" in protocol=*) p=${l#protocol=};; host=*) h=${l#host=};; esac; done; test "$h" = "$PHPIDE_GIT_HOST" || exit 0; case "$p" in https) ;; http) case "$h" in localhost|localhost:*|127.0.0.1|127.0.0.1:*) ;; *) exit 0;; esac;; *) exit 0;; esac; printf 'username=%s\npassword=%s\n' "$PHPIDE_GIT_USER" "$PHPIDE_GIT_SECRET"; }; f"#;
 
@@ -362,17 +364,28 @@ impl Accounts {
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
+        let mut account = account;
+        account["tokenUsed"] = json!(true);
         Ok((env, Some(account)))
     }
 }
 
-/// Mensagem recuperável quando o servidor recusa a credencial da conta.
+/// Mensagem recuperável quando o servidor recusa a credencial da conta. Para GitHub/GitLab
+/// com token salvo vira o aviso de token expirado com a ação Use Token.
 pub fn auth_error(error: String, account: Option<&Value>) -> String {
     let lower = error.to_lowercase();
-    let auth = ["authentication failed", "401", "403", "could not read username", "invalid username or password", "access denied"]
+    let auth = ["authentication failed", "401", "403", "could not read username", "invalid username or password", "access denied", "invalid username or token", "token expired", "bad credentials"]
         .iter()
         .any(|m| lower.contains(m));
     match (auth, account) {
+        (true, Some(a)) if matches!(a["kind"].as_str(), Some("github" | "gitlab")) && a["tokenUsed"] == true => format!(
+            "{}{}] O token da conta {} ({}) expirou ou foi revogado. Clique em Usar token para informar um novo.\n{}",
+            TOKEN_REJECTED,
+            a["id"].as_str().unwrap_or(""),
+            a["login"].as_str().unwrap_or(""),
+            a["host"].as_str().unwrap_or(""),
+            error
+        ),
         (true, Some(a)) => format!(
             "{}O servidor recusou a credencial da conta {} ({}). Atualize o token em Configurações → Contas Git ou escolha outra conta.\n{}",
             ACCOUNT_REQUIRED,

@@ -5,7 +5,7 @@ import { gitBranches } from './git-branches';
 import { mergeTools } from './merge-editor';
 import { accountError } from './git-accounts';
 
-type Hooks = { ensureAccount(kind: string): Promise<boolean>; chooseAccount(reason: string): Promise<boolean>; hasUnsaved(): boolean; busy(): boolean; setBusy(value: boolean): void; changed(): Promise<void>; feedback(message: string): void };
+type Hooks = { ensureAccount(kind: string): Promise<boolean>; chooseAccount(reason: string): Promise<boolean>; useToken(id: string): Promise<boolean>; hasUnsaved(): boolean; busy(): boolean; setBusy(value: boolean): void; changed(): Promise<void>; feedback(message: string): void };
 const labels: Partial<Record<GitOperation['kind'], string>> = {
   'create-branch': tr('Criar e trocar para branch'), switch: 'Trocar de branch', 'delete-branch': tr('Excluir branch já integrada'),
   merge: 'Integrar branch (merge)', rebase: 'Reaplicar commits sobre branch (rebase)', 'cherry-pick': 'Aplicar commit (cherry-pick)', revert: tr('Reverter commit com novo commit'),
@@ -16,7 +16,7 @@ const labels: Partial<Record<GitOperation['kind'], string>> = {
 
 export function gitTools(api: IdeApi, hooks: Hooks) {
   const dialog = document.createElement('dialog'); dialog.id = 'git-operations';
-  dialog.innerHTML = html('<h2>Branches e operações</h2><p id="git-operation-context"></p><div id="git-branch-list"></div><form><label>Operação<select id="git-operation-kind"></select></label><label id="git-target-label">Destino<select id="git-operation-target"></select><input id="git-operation-text"></label><p id="git-operation-note"></p><pre id="git-operation-result" role="status"></pre><button type="button" id="git-operation-close">Fechar</button> <button type="submit" id="git-operation-run">Executar operação</button></form>');
+  dialog.innerHTML = html('<h2>Branches e operações</h2><p id="git-operation-context"></p><div id="git-branch-list"></div><form><label>Operação<select id="git-operation-kind"></select></label><label id="git-target-label">Destino<select id="git-operation-target"></select><input id="git-operation-text"></label><p id="git-operation-note"></p><pre id="git-operation-result" role="status"></pre><div id="git-operation-actions" hidden></div><button type="button" id="git-operation-close">Fechar</button> <button type="submit" id="git-operation-run">Executar operação</button></form>');
   document.body.append(dialog);own(()=>dialog.remove());
   const find = <T extends HTMLElement>(id: string) => dialog.querySelector<T>('#' + id)!;
   const kind = find<HTMLSelectElement>('git-operation-kind');
@@ -64,18 +64,26 @@ export function gitTools(api: IdeApi, hooks: Hooks) {
       try { if (!await hooks.ensureAccount(kind.value)) { output.textContent = tr('Escolha uma conta Git para este projeto antes de continuar.'); return; } }
       catch (error) { output.textContent = accountError(error).text; return; }
     }
-    let retryAccount = '';
+    let retryAccount = ''; let retryToken = '';
+    const actions = find('git-operation-actions'); actions.replaceChildren(); actions.hidden = true;
     hooks.setBusy(true); run.disabled = true; close.disabled = true; kind.disabled = true; select.disabled = true; text.disabled = true;
     output.textContent = tr('Executando…');
     try {
       const result = await api.gitOperation({ kind: kind.value as GitOperation['kind'], target: text.hidden ? select.value : text.value, expectedHead: head });
       output.textContent = result;
-    } catch (error) { const failure = accountError(error); output.textContent = failure.text; if (failure.required) retryAccount = failure.text; }
+    } catch (error) { const failure = accountError(error); output.textContent = failure.text; if (failure.token) retryToken = failure.token; else if (failure.required) retryAccount = failure.text; }
     finally {
       // Git can modify files before returning a conflict, so reconcile on both success and failure.
       await hooks.changed(); hooks.setBusy(false); close.disabled = false; kind.disabled = false; select.disabled = false; text.disabled = false;
       try { await loadContext(); configure(); }
       catch (error) { output.textContent += '\n' + String(error); }
+      if (retryToken) {
+        // Aviso de token expirado: a ação Usar token abre "Entrar no GitHub" para a conta do push.
+        const use = document.createElement('button'); use.type = 'button'; use.id = 'git-operation-use-token'; use.textContent = tr('Usar token…');
+        const id = retryToken;
+        use.onclick = async () => { if (await hooks.useToken(id)) { actions.hidden = true; output.textContent += '\n' + tr('Token atualizado. Execute a operação novamente.'); } };
+        actions.replaceChildren(use); actions.hidden = false;
+      }
       if (retryAccount && await hooks.chooseAccount(retryAccount)) output.textContent += '\n' + tr('Conta escolhida. Execute a operação novamente.');
     }
   };

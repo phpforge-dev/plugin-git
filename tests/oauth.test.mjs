@@ -2,7 +2,7 @@ import {test} from 'node:test';import assert from 'node:assert/strict';import {W
 import {activate} from '../workbench.js';
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 const settle=async(n=6)=>{for(let i=0;i<n;i++)await tick();};
-test('Log In via GitHub (device flow), Log In with Token, Generate and GitLab',async t=>{
+test('Log In via GitHub (device flow), Generate and Use Token after a rejected push',async t=>{
  const w=new Window();for(const key of ['window','document','MutationObserver','ResizeObserver','HTMLElement','HTMLDialogElement','Option','localStorage','navigator','CustomEvent'])Object.defineProperty(globalThis,key,{value:w[key],configurable:true,writable:true});
  globalThis.Option=function(text,value){const el=document.createElement('option');el.text=text;el.value=value;return el;};globalThis.requestAnimationFrame=w.requestAnimationFrame.bind(w);globalThis.cancelAnimationFrame=w.cancelAnimationFrame.bind(w);
  const copied=[];Object.defineProperty(w.navigator,'clipboard',{value:{writeText:async text=>{copied.push(text);}},configurable:true});
@@ -86,5 +86,25 @@ test('Log In via GitHub (device flow), Log In with Token, Generate and GitLab',a
  assert.match($('git-account-hint').textContent,/\[api, read_user\]/);$('git-account-form').close();
  click('git-accounts-close');
 
- for(let i=0;i<localStorage.length;i++)assert.doesNotMatch(String(localStorage.getItem(localStorage.key(i))),/WDJB/);
+ // Push recusado com token expirado: aviso com Usar token, diálogo só com o token, novo push.
+ click('show-commit');await settle();
+ $('git-message').value='msg';$('git-message').dispatchEvent(new w.Event('input'));
+ pushError='[git-account-token:gh-1] O token da conta octocat (github.com) expirou ou foi revogado. Use Token para informar um novo.\nfatal: Authentication failed';
+ $('git-commit-push').disabled=false;click('git-commit-push');await settle();click('git-confirm-commit');await settle(10);
+ assert.equal($('git-operations').open,true,'push dialog opens after commit');
+ $('git-operations').querySelector('form').dispatchEvent(new w.Event('submit',{cancelable:true}));await settle(10);
+ assert.match($('git-operation-result').textContent,/expirou ou foi revogado/);assert.doesNotMatch($('git-operation-result').textContent,/\[git-account-token/);
+ const use=$('git-operation-use-token');assert.ok(use,'Use Token action');assert.equal($('git-account-chooser').open,false,'does not reopen the account chooser');
+ use.click();await settle();
+ assert.equal($('git-account-form').open,true);assert.equal($('git-account-form-title').textContent,'Entrar no GitHub');
+ assert.ok([...document.querySelectorAll('.git-account-identity')].every(l=>l.hidden),'only server and token');
+ assert.equal($('git-account-host').readOnly,true);assert.equal($('git-account-form-save').textContent,'Entrar');
+ $('git-account-secret').value='bad';$('git-account-form').querySelector('form').dispatchEvent(new w.Event('submit',{cancelable:true}));await settle();
+ assert.match($('git-account-form-error').textContent,/expirado/);assert.equal($('git-account-form').open,true,'rejected token keeps the dialog');
+ $('git-account-secret').value='new-token';$('git-account-form').querySelector('form').dispatchEvent(new w.Event('submit',{cancelable:true}));await settle();
+ assert.deepEqual({id:saved.at(-1).id,login:saved.at(-1).login,secret:saved.at(-1).secret},{id:'gh-1',login:'octocat',secret:'new-token'});
+ assert.equal($('git-account-secret').value,'');assert.match($('git-operation-result').textContent,/Token atualizado/);
+ $('git-operations').querySelector('form').dispatchEvent(new w.Event('submit',{cancelable:true}));await settle(10);
+ assert.equal($('git-operation-result').textContent,'pushed');
+ for(let i=0;i<localStorage.length;i++)assert.doesNotMatch(String(localStorage.getItem(localStorage.key(i))),/new-token|WDJB/);
 });

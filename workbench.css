@@ -409,3 +409,12 @@ main.git-open.left-hidden{--left-size:0px}
 .git-cl-error{color:var(--ij-error,#e06c75);min-height:1em;margin:6px 0;font-size:12px}
 .git-cl-buttons{display:flex;justify-content:flex-end;gap:8px}
 .git-cl-buttons button{min-width:72px;height:28px;border-radius:var(--ij-control-radius,4px)}
+/* Diff line selection (G-14): chunk checkbox right of the current-side line number, line checkboxes in the glyph margin. */
+#git-review .line-numbers.git-chunk-box{cursor:pointer}
+#git-review .line-numbers.git-chunk-box::after{content:"";position:absolute;right:-16px;top:50%;width:12px;height:12px;margin-top:-7px;border:1px solid var(--ij-control-border,#6f737a);border-radius:3px;background:var(--ij-dialog,transparent);box-sizing:border-box}
+#git-review .line-numbers.git-chunk-box.checked::after{background:var(--accent,#3574f0) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.5l4.5-5' fill='none' stroke='white' stroke-width='1.6'/%3E%3C/svg%3E") center/10px no-repeat;border-color:var(--accent,#3574f0)}
+#git-review .line-numbers.git-chunk-box.partial::after{background:var(--accent,#3574f0) linear-gradient(white,white) center/6px 1.6px no-repeat;border-color:var(--accent,#3574f0)}
+#git-review .git-line-box{cursor:pointer}
+#git-review .git-line-box::before{content:"";display:block;width:10px;height:10px;margin:4px auto 0;border:1px solid var(--ij-control-border,#6f737a);border-radius:2px;box-sizing:border-box;opacity:.75}
+#git-review .git-line-box.checked::before{background:var(--accent,#3574f0);border-color:var(--accent,#3574f0);opacity:1}
+#git-review .monaco-editor .margin-view-overlays .line-numbers{overflow:visible}

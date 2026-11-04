@@ -214,3 +214,101 @@ async fn changelists_assign_new_changes_to_active_list_and_survive_moves() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn stages_and_unstages_individual_lines_preserving_disk() {
+    let (_dir, root) = repo();
+    commit(&root, "a.txt", "one\ntwo\nthree\nfour\n", "base");
+    let disk = "one\nTWO\nthree\nfour\nfive\n";
+    fs::write(root.join("a.txt"), disk).unwrap();
+    let hunks = dispatch(&root, "gitHunks", &[json!("a.txt"), json!(false)])
+        .await
+        .unwrap();
+    // Trecho 0: "-two" (0), "+TWO" (1). Trecho 1: "+five" (0).
+    assert_eq!(hunks["hunks"].as_array().unwrap().len(), 2);
+    // Inclui só a linha nova "+TWO" do primeiro trecho e o trecho inteiro do segundo.
+    dispatch(
+        &root,
+        "gitApplyHunk",
+        &[
+            json!("a.txt"),
+            json!(false),
+            hunks["token"].clone(),
+            json!({"0":[1],"1":true}),
+        ],
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        command(&root, &["show", ":a.txt"]),
+        "one\ntwo\nTWO\nthree\nfour\nfive"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("a.txt")).unwrap(),
+        disk,
+        "disk untouched"
+    );
+    // Retirar do index só a linha "+five".
+    let staged = dispatch(&root, "gitHunks", &[json!("a.txt"), json!(true)])
+        .await
+        .unwrap();
+    let last = staged["hunks"].as_array().unwrap().len() - 1;
+    let mut selection = serde_json::Map::new();
+    selection.insert(last.to_string(), json!([0]));
+    dispatch(
+        &root,
+        "gitApplyHunk",
+        &[
+            json!("a.txt"),
+            json!(true),
+            staged["token"].clone(),
+            Value::Object(selection),
+        ],
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        command(&root, &["show", ":a.txt"]),
+        "one\ntwo\nTWO\nthree\nfour"
+    );
+    // Token antigo é rejeitado.
+    assert!(dispatch(
+        &root,
+        "gitApplyHunk",
+        &[
+            json!("a.txt"),
+            json!(false),
+            hunks["token"].clone(),
+            json!({"0":[0]})
+        ]
+    )
+    .await
+    .is_err());
+    let fresh = dispatch(&root, "gitHunks", &[json!("a.txt"), json!(false)])
+        .await
+        .unwrap();
+    assert!(dispatch(
+        &root,
+        "gitApplyHunk",
+        &[
+            json!("a.txt"),
+            json!(false),
+            fresh["token"].clone(),
+            json!({"0":[99]})
+        ]
+    )
+    .await
+    .is_err());
+    assert!(dispatch(
+        &root,
+        "gitApplyHunk",
+        &[
+            json!("a.txt"),
+            json!(false),
+            fresh["token"].clone(),
+            json!({"0":[]})
+        ]
+    )
+    .await
+    .is_err());
+}

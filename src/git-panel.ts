@@ -11,6 +11,7 @@ import { gitLogView } from './git-log-view';
 import { gitTools } from './git-tools';
 import { changelistDialog, closeChangelistDialog, findList, groupByChangelist, listLabel, type Changelist } from './git-changelists';
 import { showMenu, closeMenus } from './git-menu';
+import { lineSelection, countLabel } from './git-line-selection';
 
 
 export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace: () => Promise<void>) {
@@ -37,7 +38,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
     + '<select id="git-diff-whitespace" aria-label="Espaços em branco"><option value="none">Não ignorar</option><option value="trim">Ignorar espaços nas pontas</option></select>'
     + '<select id="git-diff-highlight" aria-label="Destaque das diferenças"><option value="chars">Destacar caracteres</option><option value="lines">Destacar linhas</option><option value="none">Não destacar</option></select>'
     + '<span id="git-diff-count" role="status"></span></div>'
-    + '<div class="git-diff-header"><strong id="git-file"></strong><span id="git-sides"></span><span class="git-diff-actions"><button id="git-hunks">Selecionar trechos…</button><button id="git-stage">Preparar arquivo</button><button id="git-close-diff">Voltar ao editor</button></span></div><div id="git-diff"></div>');
+    + '<div class="git-diff-header"><strong id="git-file"></strong><span id="git-sides"></span><span class="git-diff-actions"><button id="git-stage-lines" hidden>Preparar linhas incluídas</button><button id="git-hunks">Selecionar trechos…</button><button id="git-stage">Preparar arquivo</button><button id="git-close-diff">Voltar ao editor</button></span></div><div id="git-diff"></div>');
   document.querySelector('.code')!.append(review);
   const dialog = document.createElement('dialog');
   dialog.innerHTML = html('<h2>Conferir commit local</h2><p>Será gravada a versão preparada de todos os arquivos abaixo. Mudanças somente no disco ficam de fora.</p><ul id="git-commit-files"></ul><pre id="git-commit-message"></pre><p id="git-commit-error" role="alert"></p><button id="git-cancel-commit">Voltar à revisão</button> <button id="git-confirm-commit">Criar commit local</button>');
@@ -75,9 +76,22 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   iconButton(el('git-file-next'), '<path d="M5 12h14m-6-6 6 6-6 6"/>', tr('Próximo arquivo'));
   let reviewPath: string | undefined;
   const changeCount = () => diff.getLineChanges?.()?.length ?? 0;
+  // Seleção de trechos/linhas no gutter do diff (PhpStorm: "1 difference, 0 included").
+  const lines = lineSelection(api, diff, {busy: () => busy, setBusy(value) { busy = value; el<HTMLButtonElement>('open').disabled = value; commitEnabled(); },
+    feedback: text => feedback(text), countChanged: () => updateCount(),
+    async changed() {
+      const current = selected; await refresh(true); if (!current) return;
+      const change = state?.changes.find(c => c.path === current.value.path);
+      const stillThere = change && (current.staged ? change.index !== ' ' && change.index !== '?' : change.worktree !== ' ');
+      if (stillThere) await showDiff(current.value.path, current.staged); else closeDiff();
+    }});
   function updateCount() {
     const count = changeCount();
-    el('git-diff-count').textContent = count === 0 ? tr('Nenhuma diferença') : count === 1 ? tr('1 diferença') : msg`${count} diferenças`;
+    const stageable = !!selected && lines.available();
+    el('git-diff-count').textContent = countLabel(count, stageable ? lines.included() : -1, !!selected?.staged);
+    const button = el<HTMLButtonElement>('git-stage-lines'); button.hidden = !stageable;
+    button.textContent = selected?.staged ? tr('Retirar linhas marcadas') : tr('Preparar linhas incluídas');
+    button.disabled = busy || !stageable || lines.included() === 0;
     for (const id of ['git-diff-prev', 'git-diff-next']) el<HTMLButtonElement>(id).disabled = !count;
   }
   own(diff.onDidUpdateDiff?.(updateCount));
@@ -171,7 +185,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
     finally{busy=false;el<HTMLButtonElement>('open').disabled=false;commitEnabled();}
   };
   function closeDiff() {
-    selectionRequest++; selected = undefined; reviewPath = undefined; diff.setModel(null); models.forEach(m => m.dispose()); models = [];
+    selectionRequest++; selected = undefined; reviewPath = undefined; lines.clear(); diff.setModel(null); models.forEach(m => m.dispose()); models = [];
     review.hidden = true;
     for (const id of ['tabs', 'breadcrumbs', 'navigation', 'editor']) el(id).hidden = false;
   }
@@ -196,6 +210,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
       for (const row of panel.querySelectorAll<HTMLButtonElement>('.git-file-row')) row.classList.toggle('selected', row.dataset.path === path && row.dataset.staged === String(prepared));
       el('git-file').textContent = path; reviewPath = path;
       el('git-sides').textContent = `${value.beforeLabel}   →   ${value.afterLabel}`;
+      if (revision) lines.clear(); else void lines.load(path, prepared);
       el('git-stage').textContent = prepared ? tr('Retirar do commit') : tr('Preparar arquivo inteiro');
       el<HTMLButtonElement>('git-stage').disabled = busy;
       for (const id of ['tabs', 'breadcrumbs', 'navigation', 'editor']) el(id).hidden = true;
@@ -324,6 +339,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   el('git-refresh').onclick=()=>{void refresh(true);history.refresh();};
   el('git-changes-tab').onclick=()=>{void refresh(true);};el('git-log-tab').onclick=()=>{void history.open();};
   el('git-close-diff').onclick = closeDiff;
+  el('git-stage-lines').onclick = () => { void lines.apply(); };
   el('git-hunks').onclick = async () => {
     if (!selected || busy) return;
     const current = selected;

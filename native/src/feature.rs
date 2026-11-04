@@ -863,6 +863,10 @@ pub async fn dispatch_with(
             if *a(2) != token {
                 return Err("Diff mudou".into());
             }
+            if a(3).is_object() {
+                line_staging::apply_lines(root, s(a(0))?, a(1) == true, a(2), a(3)).await?;
+                return Ok(Value::Null);
+            }
             let index = a(3).as_u64().ok_or("Trecho inválido")? as usize;
             let patch = prefix + chunks.get(index).ok_or("Trecho inválido")?;
             let mut argv = vec!["apply".into(), "--cached".into(), "--unidiff-zero".into()];
@@ -1155,6 +1159,8 @@ mod extra;
 #[cfg(test)]
 #[path = "extra_scenarios.rs"]
 mod extra_scenarios;
+#[path = "line_staging.rs"]
+mod line_staging;
 #[cfg(test)]
 #[path = "git_scenarios.rs"]
 mod scenarios;

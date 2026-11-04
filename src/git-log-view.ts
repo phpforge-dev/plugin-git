@@ -8,7 +8,8 @@ import {showMenu, closeMenus, type MenuEntry} from './git-menu';
  *  merges esmaecidos, fundo da branch atual e menu de contexto do commit. Desenho e código próprios. */
 type Commit = GitCommit & {email?: string; committer?: string};
 type Filters = {refs: string[]; authors: string[]; since: string; until: string; paths: string[]; text: string; regex: boolean; matchCase: boolean};
-type Hooks = {diff(path: string, revision: string): void; branches(): void; operation(kind: 'revert' | 'cherry-pick', hash: string): void; commit(): void; extend?(menu: MenuEntry[], commit: Commit, context: LogContext): void};
+type Hooks = {diff(path: string, revision: string): void; branches(): void; operation(kind: 'revert' | 'cherry-pick', hash: string): void; commit(): void; extend?(menu: MenuEntry[], commit: Commit, context: LogContext): void;
+  refMenu?(ref: {name: string; kind: string; commit?: string}, x: number, y: number, context: LogContext): void};
 export type LogContext = {head: string | undefined; reload(): Promise<void>; feedback(text: string): void; tools(): any};
 
 const ROW = 26, LANE = 12;
@@ -160,6 +161,11 @@ export function gitLogView(api: any, hooks: Hooks) {
       const row = document.createElement('button'); row.type = 'button'; row.className = `git-ref-row git-ref-${kind}`; row.textContent = text; row.dataset.ref = ref; row.title = ref.replace(/^refs\/(heads|remotes|tags)\//, '');
       row.setAttribute('role', 'treeitem'); row.classList.toggle('git-current-branch', current); row.setAttribute('aria-pressed', String(filters.refs.length === 1 && filters.refs[0] === ref));
       row.onclick = () => { filters.refs = ref === 'HEAD' ? [] : [ref]; void load(); };
+      row.oncontextmenu = event => {
+        if (!hooks.refMenu || kind === 'head') return; event.preventDefault();
+        const name = ref.replace(/^refs\/(heads|remotes|tags)\//, ''); context.head = head;
+        hooks.refMenu({name, kind, commit: kind === 'tag' ? (tools.tags ?? []).find((t: any) => t.name === name)?.commit : undefined}, event.clientX, event.clientY, context);
+      };
       parent.append(row);
     };
     const folder = (parent: HTMLElement, title: string) => { const d = document.createElement('details'); d.open = true; const s = document.createElement('summary'); s.textContent = title; d.append(s); parent.append(d); return d; };

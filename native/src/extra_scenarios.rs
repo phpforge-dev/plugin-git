@@ -71,6 +71,12 @@ fn commit(root: &Path, file: &str, text: &str, message: &str) -> String {
         "2026-10-01T10:00:00",
     )
 }
+async fn op(root: &Path, input: Value) -> Res<Value> {
+    let st = status(root).await?;
+    let mut input = input;
+    input["expectedHead"] = st["head"].clone();
+    dispatch(root, "gitOperation", &[input]).await
+}
 
 #[tokio::test]
 async fn blame_annotates_buffer_with_commit_details_and_uncommitted_lines() {
@@ -421,4 +427,68 @@ async fn log_filters_by_branch_user_date_path_text_and_hash() {
     assert!(dispatch(&root, "gitLog", &[json!({"paths":["../x"]})])
         .await
         .is_err());
+}
+
+#[tokio::test]
+async fn tags_create_annotated_force_and_delete() {
+    let (_dir, root) = repo();
+    let first = commit(&root, "a", "1", "one");
+    let second = commit(&root, "a", "2", "two");
+    op(
+        &root,
+        json!({"kind":"create-tag","target":"v1.0","commit":first}),
+    )
+    .await
+    .unwrap();
+    op(
+        &root,
+        json!({"kind":"create-tag","target":"v1.1","message":"Release 1.1"}),
+    )
+    .await
+    .unwrap();
+    let tools = dispatch(&root, "gitTools", &[]).await.unwrap();
+    let tags = tools["tags"].as_array().unwrap();
+    let find = |name: &str| tags.iter().find(|t| t["name"] == name).unwrap().clone();
+    assert_eq!(find("v1.0")["commit"], first.as_str());
+    assert_eq!(find("v1.0")["annotated"], false);
+    assert_eq!(find("v1.1")["commit"], second.as_str());
+    assert_eq!(find("v1.1")["annotated"], true);
+    assert_eq!(tools["user"], "Ana Fixture");
+    assert!(
+        op(&root, json!({"kind":"create-tag","target":"v1.0"}))
+            .await
+            .is_err(),
+        "existing tag needs Force"
+    );
+    op(
+        &root,
+        json!({"kind":"create-tag","target":"v1.0","force":true}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(command(&root, &["rev-parse", "v1.0^{commit}"]), second);
+    for bad in ["-f", "a..b", "bad name", ""] {
+        assert!(
+            op(&root, json!({"kind":"create-tag","target":bad}))
+                .await
+                .is_err(),
+            "{}",
+            bad
+        );
+    }
+    op(&root, json!({"kind":"delete-tag","target":"v1.0"}))
+        .await
+        .unwrap();
+    assert!(op(&root, json!({"kind":"delete-tag","target":"v1.0"}))
+        .await
+        .is_err());
+    assert!(
+        op(
+            &root,
+            json!({"kind":"push-tag","target":"v1.1","remote":"origin"})
+        )
+        .await
+        .is_err(),
+        "no remote"
+    );
 }

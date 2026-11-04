@@ -815,9 +815,10 @@ pub async fn dispatch_with(
             let b = branches(root).await?;
             let r = git(root, &["remote"]).await?;
             let stash = git(root, &["stash", "list", "--format=%gd%x00%s"]).await?;
+            let tags = tags::tags(root).await?;
             let user = config(root, "user.name", false).await.unwrap_or_default();
             Ok(
-                json!({"user":user,"branches":b,"remotes":r.lines().collect::<Vec<_>>(),"stashes":stash.lines().map(|l|{let(ref_,subject)=l.split_once('\0').unwrap_or((l,""));json!({"ref":ref_,"subject":subject})}).collect::<Vec<_>>()}),
+                json!({"tags":tags,"user":user,"branches":b,"remotes":r.lines().collect::<Vec<_>>(),"stashes":stash.lines().map(|l|{let(ref_,subject)=l.split_once('\0').unwrap_or((l,""));json!({"ref":ref_,"subject":subject})}).collect::<Vec<_>>()}),
             )
         }
         "gitHistory" => history(root, s(a(0))?).await,
@@ -982,6 +983,9 @@ pub async fn dispatch_with(
             };
             if target.starts_with('-') || target.contains(['\0', '\r', '\n']) {
                 return Err("Destino inválido".into());
+            }
+            if let Some(result) = tags::operation(root, kind, input, accounts).await {
+                return result;
             }
             if [
                 "switch",
@@ -1165,6 +1169,8 @@ mod extra_scenarios;
 mod line_staging;
 #[path = "log_filter.rs"]
 mod log_filter;
+#[path = "tags.rs"]
+mod tags;
 #[cfg(test)]
 #[path = "git_scenarios.rs"]
 mod scenarios;

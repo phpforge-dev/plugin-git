@@ -465,3 +465,6 @@ main.git-open.left-hidden{--left-size:0px}
 .git-log-ask{position:absolute;z-index:20;display:grid;gap:8px;min-width:260px;padding:10px 12px;background:var(--ij-popup,var(--panel));border:1px solid var(--ij-popup-border,var(--border));border-radius:var(--ij-popup-radius,8px);box-shadow:var(--ij-shadow,0 8px 24px rgba(0,0,0,.35));font-size:12px}
 .git-log-ask label{display:grid;gap:4px}.git-log-ask input{font:inherit;padding:4px 6px;border:1px solid var(--ij-control-border,var(--border));border-radius:4px;background:transparent;color:inherit}
 .git-log-ask div{display:flex;justify-content:flex-end;gap:6px}
+/* Tag dialogs (G-20): the Log variant asks only for the name. */
+.git-tag-dialog .git-tag-name:has(span:empty){grid-template-columns:1fr}.git-tag-dialog .git-tag-name span:empty{display:none}
+.git-tag-prompt{margin:0 0 8px;font-size:13px}.git-tag-prompt:empty{display:none}

@@ -1,5 +1,6 @@
 use crate::{
-    process::{git, run},
+    accounts::{auth_error, Accounts},
+    process::{git, run, run_env},
     workspace::{self, err, hash, Res},
 };
 use serde_json::{json, Value};
@@ -622,6 +623,15 @@ async fn save_account(root: &Path, input: &Value) -> Res<Value> {
     account(root).await
 }
 pub async fn dispatch(root: &Path, method: &str, args: &[Value]) -> Res<Value> {
+    dispatch_with(root, method, args, None).await
+}
+/// Com `accounts`, commit usa o autor da conta do projeto e fetch/pull/push a credencial dela.
+pub async fn dispatch_with(
+    root: &Path,
+    method: &str,
+    args: &[Value],
+    accounts: Option<&Accounts>,
+) -> Res<Value> {
     repository(root).await?;
     let a = |i| args.get(i).unwrap_or(&Value::Null);
     match method {
@@ -745,11 +755,17 @@ pub async fn dispatch(root: &Path, method: &str, args: &[Value]) -> Res<Value> {
             {
                 return Err("Nada preparado".into());
             }
+            let env = match accounts {
+                Some(accounts) => accounts.identity_env(root).await?,
+                None => vec![],
+            };
+            let mut argv = vec!["commit"];
             if amend {
-                git(root, &["commit", "--amend", "-m", message]).await?;
-            } else {
-                git(root, &["commit", "-m", message]).await?;
+                argv.push("--amend");
             }
+            argv.extend(["-m", message]);
+            let argv: Vec<String> = argv.into_iter().map(String::from).collect();
+            run_env(root, "git", &argv, None, &env).await?;
             Ok(json!(reference(root, "HEAD").await))
         }
         "gitLog" => {
@@ -946,6 +962,16 @@ pub async fn dispatch(root: &Path, method: &str, args: &[Value]) -> Res<Value> {
             }
             let kind = s(&input["kind"])?;
             let target = input["target"].as_str().unwrap_or("");
+            // Rede com a conta do projeto: o token vai só ao ambiente deste processo git.
+            let remote_run = |argv: Vec<String>, remote: Option<String>| async move {
+                let (env, account) = match accounts {
+                    Some(accounts) => accounts.credential_env(root, remote.as_deref()).await?,
+                    None => (vec![], None),
+                };
+                run_env(root, "git", &argv, None, &env)
+                    .await
+                    .map_err(|e| auth_error(e, account.as_ref()))
+            };
             if target.starts_with('-') || target.contains(['\0', '\r', '\n']) {
                 return Err("Destino inválido".into());
             }
@@ -1037,14 +1063,30 @@ pub async fn dispatch(root: &Path, method: &str, args: &[Value]) -> Res<Value> {
                 }
                 "fetch" => {
                     if target.is_empty() {
-                        return Ok(json!(git(root, &["fetch", "--all"]).await?));
+                        return Ok(json!(remote_run(vec!["fetch".into(), "--all".into()], None).await?));
                     }
                     if !git(root, &["remote"]).await?.lines().any(|v| v == target) {
                         return Err("Remoto inválido".into());
                     }
-                    vec!["fetch", "--", target]
+                    return Ok(json!(
+                        remote_run(
+                            vec!["fetch".into(), "--".into(), target.into()],
+                            Some(target.into())
+                        )
+                        .await?
+                    ));
                 }
-                "pull" => vec!["pull", "--ff-only", "--no-rebase"],
+                "pull" => {
+                    let branch = s(&state["branch"])?;
+                    let remote = config(root, &format!("branch.{}.remote", branch), false).await;
+                    return Ok(json!(
+                        remote_run(
+                            vec!["pull".into(), "--ff-only".into(), "--no-rebase".into()],
+                            remote.filter(|r| !r.starts_with('-'))
+                        )
+                        .await?
+                    ));
+                }
                 "push" => {
                     let branch = s(&state["branch"])?;
                     let remote = config(root, &format!("branch.{}.remote", branch), false)
@@ -1057,17 +1099,15 @@ pub async fn dispatch(root: &Path, method: &str, args: &[Value]) -> Res<Value> {
                         return Err("Upstream inválido".into());
                     }
                     return Ok(json!(
-                        run(
-                            root,
-                            "git",
-                            &[
+                        remote_run(
+                            vec![
                                 "push".into(),
                                 "--porcelain".into(),
                                 "--".into(),
-                                remote,
+                                remote.clone(),
                                 format!("HEAD:{}", dest)
                             ],
-                            None
+                            Some(remote)
                         )
                         .await?
                     ));

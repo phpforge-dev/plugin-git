@@ -5,6 +5,16 @@ use tokio::{
     process::Command,
 };
 pub async fn run(root: &Path, program: &str, args: &[String], input: Option<&str>) -> Res<String> {
+    run_env(root, program, args, input, &[]).await
+}
+/// Como `run`, com variáveis extras só neste processo (identidade e credencial da conta).
+pub async fn run_env(
+    root: &Path,
+    program: &str,
+    args: &[String],
+    input: Option<&str>,
+    env: &[(String, String)],
+) -> Res<String> {
     let mut cmd = Command::new(program);
     cmd.args(args)
         .current_dir(root)
@@ -35,6 +45,7 @@ pub async fn run(root: &Path, program: &str, args: &[String], input: Option<&str
             cmd.env("GIT_LITERAL_PATHSPECS", "1");
         }
     }
+    cmd.envs(env.iter().map(|(k, v)| (k, v)));
     let mut child = cmd.spawn().map_err(err)?;
     let mut stdin = child.stdin.take().ok_or("stdin indisponível")?;
     let bytes = input.unwrap_or("").as_bytes().to_vec();

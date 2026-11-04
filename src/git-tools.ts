@@ -3,8 +3,9 @@ import {tr,msg,html,dockWindow,resizeToolWindow,toolIcon,editorFont,keymap,fileI
 
 import { gitBranches } from './git-branches';
 import { mergeTools } from './merge-editor';
+import { accountError } from './git-accounts';
 
-type Hooks = { hasUnsaved(): boolean; busy(): boolean; setBusy(value: boolean): void; changed(): Promise<void>; feedback(message: string): void };
+type Hooks = { ensureAccount(kind: string): Promise<boolean>; chooseAccount(reason: string): Promise<boolean>; hasUnsaved(): boolean; busy(): boolean; setBusy(value: boolean): void; changed(): Promise<void>; feedback(message: string): void };
 const labels: Partial<Record<GitOperation['kind'], string>> = {
   'create-branch': tr('Criar e trocar para branch'), switch: 'Trocar de branch', 'delete-branch': tr('Excluir branch já integrada'),
   merge: 'Integrar branch (merge)', rebase: 'Reaplicar commits sobre branch (rebase)', 'cherry-pick': 'Aplicar commit (cherry-pick)', revert: tr('Reverter commit com novo commit'),
@@ -58,17 +59,24 @@ export function gitTools(api: IdeApi, hooks: Hooks) {
   dialog.querySelector('form')!.onsubmit = async event => {
     event.preventDefault(); if (hooks.busy()) return;
     if (hooks.hasUnsaved()) { output.textContent = tr('Salve os buffers antes de executar a operação.'); return; }
+    const network = ['push', 'pull', 'fetch'].includes(kind.value);
+    if (network) {
+      try { if (!await hooks.ensureAccount(kind.value)) { output.textContent = tr('Escolha uma conta Git para este projeto antes de continuar.'); return; } }
+      catch (error) { output.textContent = accountError(error).text; return; }
+    }
+    let retryAccount = '';
     hooks.setBusy(true); run.disabled = true; close.disabled = true; kind.disabled = true; select.disabled = true; text.disabled = true;
     output.textContent = tr('Executando…');
     try {
       const result = await api.gitOperation({ kind: kind.value as GitOperation['kind'], target: text.hidden ? select.value : text.value, expectedHead: head });
       output.textContent = result;
-    } catch (error) { output.textContent = String(error); }
+    } catch (error) { const failure = accountError(error); output.textContent = failure.text; if (failure.required) retryAccount = failure.text; }
     finally {
       // Git can modify files before returning a conflict, so reconcile on both success and failure.
       await hooks.changed(); hooks.setBusy(false); close.disabled = false; kind.disabled = false; select.disabled = false; text.disabled = false;
       try { await loadContext(); configure(); }
       catch (error) { output.textContent += '\n' + String(error); }
+      if (retryAccount && await hooks.chooseAccount(retryAccount)) output.textContent += '\n' + tr('Conta escolhida. Execute a operação novamente.');
     }
   };
   async function open(action?: GitOperation['kind'], target = '') {

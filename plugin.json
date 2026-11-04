@@ -1,8 +1,8 @@
 {
   "id": "phpforge.git",
   "name": "Git",
-  "version": "1.0.4",
-  "minIdeVersion": "0.2.14",
+  "version": "1.1.0",
+  "minIdeVersion": "0.2.18",
   "main": "main.js",
   "description": "git workbench integration with explicit host services.",
   "activation": {
@@ -19,6 +19,11 @@
     "style": "workbench.css",
     "services": [
       "gitAccount",
+      "gitAccounts",
+      "gitAccountsDefault",
+      "gitAccountsRemove",
+      "gitAccountsSave",
+      "gitAccountsUse",
       "gitApplyHunk",
       "gitBranches",
       "gitCommit",

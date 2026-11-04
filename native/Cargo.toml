@@ -12,5 +12,6 @@ regex="1"
 dunce="1"
 chrono="0.4"
 url="2"
+keyring={version="3.6",features=["apple-native","windows-native","sync-secret-service","crypto-rust"]}
 [dev-dependencies]
 tempfile="3"

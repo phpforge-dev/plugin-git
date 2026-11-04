@@ -4,6 +4,7 @@ import {sdk,tr,msg,html,dockWindow,resizeToolWindow,toolIcon,editorFont,keymap,f
 import {mountGitFileAgent} from './git-file-agent';
 import {mountCommitGeneration} from './git-generate-message';
 import { mountGitAccount } from './git-account';
+import { mountGitAccounts, accountError, describeAccount } from './git-accounts';
 
 import { gitLogView } from './git-log-view';
 
@@ -20,11 +21,11 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   panel.id = 'git-panel'; panel.hidden = true;
   panel.innerHTML = html`<div class="git-heading"><strong>Commit</strong><span id="git-branch" hidden></span><button id="git-panel-menu" aria-label="Opções do Commit">⋮</button></div>
     <div class="git-commit-toolbar"><button id="git-refresh"></button><button id="git-show-diff"></button><button id="git-tools"></button><button id="git-log-tab"></button><button id="git-search-toggle"></button><button id="git-expand-all"></button><button id="git-collapse-all"></button></div>
-    <div id="git-panel-options" hidden><button id="git-account">Conta deste repositório…</button></div>
+    <div id="git-panel-options" hidden><button id="git-accounts-menu">Contas Git…</button><button id="git-project-account-menu">Conta Git deste projeto…</button><button id="git-account">Identidade e autenticação locais (git config)…</button></div>
     <input id="git-file-filter" hidden type="search" placeholder="Buscar arquivos alterados…" aria-label="Buscar arquivos alterados…">
     <div id="git-changes-tab" hidden></div><div id="git-changes"></div>
     <div id="git-feedback" role="status" aria-live="polite"></div>
-    <div id="git-commit-form"><div class="git-commit-options"><label><input type="checkbox" id="git-amend">Amend</label><span id="git-amend-target">último commit</span></div><textarea id="git-message" aria-label="Mensagem do commit" placeholder="Mensagem do commit"></textarea><div class="git-commit-buttons"><button id="git-review-commit" disabled>Commit</button><button id="git-commit-push" disabled>Commit e Push…</button><button id="git-commit-settings" aria-label="Conta deste repositório…"></button></div></div>`;
+    <div id="git-commit-form"><div class="git-commit-options"><label><input type="checkbox" id="git-amend">Amend</label><span id="git-amend-target">último commit</span><button type="button" id="git-project-account" class="git-project-account"></button></div><textarea id="git-message" aria-label="Mensagem do commit" placeholder="Mensagem do commit"></textarea><div class="git-commit-buttons"><button id="git-review-commit" disabled>Commit</button><button id="git-commit-push" disabled>Commit e Push…</button><button id="git-commit-settings" aria-label="Conta Git deste projeto…"></button></div></div>`;
   sidebar.append(panel);
   const review = document.createElement('section');
   review.id = 'git-review'; review.hidden = true;
@@ -42,7 +43,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
   toolIcon(el('git-refresh'),'<path d="M19 7a8 8 0 1 0 1 8M19 3v5h-5"/>',tr('Atualizar alterações'));
   toolIcon(el('git-tools'),'<circle cx="7" cy="5" r="2"/><circle cx="17" cy="5" r="2"/><circle cx="7" cy="19" r="2"/><path d="M7 7v10m10-10c0 7-10 2-10 8"/>',tr('Branches e operações…'));
-  toolIcon(el('git-commit-settings'),'<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2"/>',tr('Conta deste repositório…'));
+  toolIcon(el('git-commit-settings'),'<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2"/>',tr('Conta Git deste projeto…'));
   toolIcon(el('git-show-diff'),'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',tr('Mostrar diff'));
   toolIcon(el('git-log-tab'),'<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',tr('Histórico'));
   toolIcon(el('git-search-toggle'),'<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>',tr('Buscar arquivos alterados…'));
@@ -114,10 +115,26 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   const feedback = (message: string) => { el('git-feedback').textContent = message; };
   const conflictStatus = (code: string) => ['DD','AU','UD','UA','DU','AA','UU'].includes(code);
   const staged = () => state?.changes.filter(c => c.index !== ' ' && c.index !== '?' && !conflictStatus(c.index + c.worktree)) ?? [];
-  const operations = gitTools(api, { hasUnsaved, busy: () => busy, setBusy(value) { busy = value; el<HTMLButtonElement>('open').disabled = value; commitEnabled(); if (!value) {void refresh(true);history.refresh();} }, async changed() { closeDiff(); try { await reloadWorkspace(); } catch(error) { feedback(String(error)); } }, feedback });
+  const operations = gitTools(api, { ensureAccount: (kind: string) => accounts.ensure(kind), chooseAccount: (reason: string) => accounts.choose(reason), hasUnsaved, busy: () => busy, setBusy(value) { busy = value; el<HTMLButtonElement>('open').disabled = value; commitEnabled(); if (!value) {void refresh(true);history.refresh();} }, async changed() { closeDiff(); try { await reloadWorkspace(); } catch(error) { feedback(String(error)); } }, feedback });
   const account=mountGitAccount(api,()=>busy,value=>{busy=value;el<HTMLButtonElement>('open').disabled=value;commitEnabled();});
+  const accounts=mountGitAccounts(api);
+  const chooseAccount=()=>accounts.choose(tr('Escolha a conta usada nos commits e pushes deste projeto.'));
+  let accountRequest=0;
+  /** Conta do projeto sempre visível no Commit; clicar troca a conta. */
+  async function showAccount(){
+    const version=++accountRequest;const chip=el<HTMLButtonElement>('git-project-account');
+    try{const {project}=await accounts.load();if(version!==accountRequest)return;chip.hidden=!project;if(!project)return;
+      chip.classList.toggle('warning',project.missing||!project.binding);
+      chip.textContent=project.missing?tr('Conta removida — escolher…'):project.binding==='system'?tr('Conta: Git do sistema'):project.account?msg`Conta: ${project.account.login}@${project.account.host}`:tr('Conta: escolher no commit');
+      chip.title=project.account?describeAccount(project.account):tr('Conta Git deste projeto');
+    }catch{chip.hidden=true;}
+  }
+  accounts.onChange(()=>{void showAccount();});
+  el('git-project-account').onclick=()=>{void chooseAccount();};
+  el('git-accounts-menu').onclick=()=>{el('git-panel-options').hidden=true;void accounts.open();};
+  el('git-project-account-menu').onclick=()=>{el('git-panel-options').hidden=true;void chooseAccount();};
   el('git-account').onclick=()=>{el('git-panel-options').hidden=true;void account.open();};
-  el('git-commit-settings').onclick=()=>{void account.open();};
+  el('git-commit-settings').onclick=()=>{void chooseAccount();};
   el('git-tools').onclick = () => { void operations.branches(); };
   on(document,'ide-git-branches',()=>{void operations.branches();});
   function commitEnabled() {
@@ -237,7 +254,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
     } finally { loading = false; }
   }
   const history = gitLogView(api,{diff(path,revision){void showDiff(path,false,revision);},branches(){void operations.branches();},operation(kind,hash){void operations.open(kind,hash);},commit(){el('show-commit').click();}});
-  el('show-commit').onclick = () => { panel.hidden=false;el('tree').hidden=true;sidebar.querySelector('h3')!.hidden=true;document.querySelector('main')!.classList.add('git-open');void refresh(true); };
+  el('show-commit').onclick = () => { panel.hidden=false;el('tree').hidden=true;sidebar.querySelector('h3')!.hidden=true;document.querySelector('main')!.classList.add('git-open');void refresh(true);void showAccount(); };
   el('show-project').onclick = () => { panel.hidden=true;el('tree').hidden=false;sidebar.querySelector('h3')!.hidden=false;document.querySelector('main')!.classList.remove('git-open');closeDiff(); };
   el('git-refresh').onclick=()=>{void refresh(true);history.refresh();};
   el('git-changes-tab').onclick=()=>{void refresh(true);};el('git-log-tab').onclick=()=>{void history.open();};
@@ -279,16 +296,21 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
     finally { busy = false; el<HTMLButtonElement>('open').disabled = false; }
     await refresh(); feedback(message!); if (selected) el<HTMLButtonElement>('git-stage').disabled = false;
   };
-  function reviewCommit(push=false) {
+  async function reviewCommit(push=false) {
     if (!state || busy) return;
     const files = staged(); if (!files.length && !state.mergeHead&&!el<HTMLInputElement>('git-amend').checked) return;
+    // Primeiro commit/push sem conta: pergunta e guarda a escolha no repositório.
+    try { if (!await accounts.ensure(push ? tr('commit e push') : tr('commit'))) { feedback(tr('Commit não iniciado: escolha uma conta Git para este projeto.')); return; } }
+    catch (error) { feedback(accountError(error).text); return; }
+    void showAccount();
+    if (!state || busy) return;
     pushAfterCommit=push;
     el('git-commit-files').replaceChildren(...files.map(file => { const li = document.createElement('li'); li.textContent = `${file.index} ${file.path}`; return li; }));
     if(state.mergeHead) { const li = document.createElement('li'); li.textContent = tr('Finalizar merge com ') + state.mergeHead.slice(0,8); el('git-commit-files').append(li); }
     el('git-commit-message').textContent = el<HTMLTextAreaElement>('git-message').value;
     const amend=el<HTMLInputElement>('git-amend').checked;el('git-commit-error').textContent = amend?tr('Amend substitui o último commit e altera seu hash.'):'';dialog.dataset.amend=String(amend);dialog.dataset.token = state.indexToken; dialog.showModal();
   };
-  el('git-review-commit').onclick=()=>reviewCommit();el('git-commit-push').onclick=()=>reviewCommit(true);
+  el('git-review-commit').onclick=()=>{void reviewCommit();};el('git-commit-push').onclick=()=>{void reviewCommit(true);};
   el('git-cancel-commit').onclick = () => dialog.close();
   el('git-confirm-commit').onclick = async () => {
     if (busy) return;
@@ -298,7 +320,10 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
     try {
       const hash = await api.gitCommit(el('git-commit-message').textContent!, dialog.dataset.token!,dialog.dataset.amend==='true');
       dialog.close(); el<HTMLInputElement>('git-amend').checked=false;el<HTMLTextAreaElement>('git-message').value = ''; closeDiff(); feedback(msg`Commit criado: ${hash.slice(0, 8)}. Nenhum push foi realizado.`);
-    } catch (error) { el('git-commit-error').textContent = String(error); }
+    } catch (error) {
+      const failure = accountError(error); el('git-commit-error').textContent = failure.text;
+      if (failure.required) { busy = false; if (await accounts.choose(failure.text)) el('git-commit-error').textContent = tr('Conta escolhida. Confirme o commit novamente.'); void showAccount(); }
+    }
     finally { busy = false; el<HTMLButtonElement>('open').disabled = false; el<HTMLButtonElement>('git-confirm-commit').disabled = false; el<HTMLButtonElement>('git-cancel-commit').disabled = false; await refresh(); history.refresh(); }
     if(!dialog.open&&pushAfterCommit){pushAfterCommit=false;await operations.open('push');}
   };
@@ -306,7 +331,7 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   // Poll only while visible; keep a reviewed diff stable until explicitly reopened.
   every(() => { if (!panel.hidden && !dialog.open && document.hasFocus()) void refresh(); }, 3000);
   on(window,'focus', () => { if (!panel.hidden) void refresh(); });
-  return { reset() { agentFiles.reset(); commitGeneration.reset(); account.close(); operations.close(); generation++; selectionRequest++; state = undefined; lastState = ''; el<HTMLInputElement>('git-amend').checked=false;pushAfterCommit=false;dialog.close(); closeDiff(); el<HTMLTextAreaElement>('git-message').value = ''; history.reset(); el('git-changes').replaceChildren(); if (!panel.hidden) void refresh(true); } };
+  return { reset() { void showAccount(); accounts.close(); agentFiles.reset(); commitGeneration.reset(); account.close(); operations.close(); generation++; selectionRequest++; state = undefined; lastState = ''; el<HTMLInputElement>('git-amend').checked=false;pushAfterCommit=false;dialog.close(); closeDiff(); el<HTMLTextAreaElement>('git-message').value = ''; history.reset(); el('git-changes').replaceChildren(); if (!panel.hidden) void refresh(true); } };
 }
 
 function ownEditor(...args:any[]){const v=monaco.editor.createDiffEditor(...args);own(()=>v.dispose());return v;}

@@ -335,3 +335,41 @@ main.git-open{height:calc(100vh - var(--ij-toolbar-height) - var(--ij-statusbar-
 /* main.git-open sets panel sizes; collapsed panels from the host (no tool open on that side) must still take no space. */
 main.git-open.right-hidden{--right-size:0px}
 main.git-open.left-hidden{--left-size:0px}
+/* Contas Git: Settings → Controle de versão → GitHub/GitLab/Bitbucket/Outros hosts. */
+#git-accounts-settings{width:min(860px,calc(100vw - 32px));height:min(560px,calc(100vh - 48px));padding:0;border:1px solid var(--ij-popup-border);border-radius:var(--ij-popup-radius);background:var(--ij-dialog);color:var(--ij-text);box-shadow:var(--ij-shadow);font:var(--ij-font-size)/1.4 var(--ij-font-ui);overflow:hidden}
+#git-accounts-settings[open]{display:flex;flex-direction:column}
+.git-accounts-title{padding:8px 14px;font-weight:600;border-bottom:1px solid var(--ij-border-subtle)}
+.git-accounts-body{flex:1;display:grid;grid-template-columns:230px 1fr;min-height:0}
+.git-accounts-body nav{border-right:1px solid var(--ij-border-subtle);padding:8px 6px;overflow:auto}
+.git-accounts-group{padding:3px 8px;font-weight:600}
+#git-accounts-nav button{display:block;width:100%;text-align:left;border:0;background:transparent;color:var(--ij-text);padding:3px 8px 3px 24px;border-radius:4px;height:auto;font:inherit}
+#git-accounts-nav button:hover{background:var(--ij-list-hover)}
+#git-accounts-nav button[aria-selected=true]{background:var(--ij-selection);color:var(--ij-selection-text)}
+.git-accounts-body section{padding:12px 16px;overflow:auto;display:flex;flex-direction:column;gap:8px;min-width:0}
+.git-accounts-crumb{font-weight:600}.git-accounts-crumb span{color:var(--ij-text)}
+.git-accounts-list-wrap{border:1px solid var(--ij-border);border-radius:4px;display:flex;flex-direction:column;min-height:180px}
+.git-accounts-toolbar{display:flex;gap:2px;padding:3px 6px;border-bottom:1px solid var(--ij-border-subtle)}
+.git-accounts-toolbar button{width:24px;height:24px;border:0;border-radius:4px;background:transparent;color:var(--ij-text);font-size:15px;line-height:1;padding:0}
+.git-accounts-toolbar button:hover:not(:disabled){background:var(--ij-hover)}.git-accounts-toolbar button:disabled{color:var(--ij-text-disabled)}
+#git-accounts-list{flex:1;overflow:auto;outline:none}
+.git-accounts-row{display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:default}
+.git-accounts-row[aria-selected=true]{background:var(--ij-selection-inactive)}#git-accounts-list:focus .git-accounts-row[aria-selected=true]{background:var(--ij-selection)}
+.git-accounts-avatar{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:600;font-size:13px}
+.git-accounts-text{display:flex;flex-direction:column;min-width:0}
+.git-accounts-name{display:flex;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.git-accounts-name.default{font-weight:700}
+.git-accounts-login{color:var(--ij-text-secondary);font-weight:400}.git-accounts-host{color:var(--ij-text-secondary)}
+.git-accounts-project{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.git-accounts-project span{color:var(--ij-text-secondary)}
+.git-accounts-note{margin:0;color:var(--ij-text-secondary);font-size:var(--ij-font-size-small)}
+.git-accounts-footer{display:flex;justify-content:flex-end;gap:8px;padding:8px 14px;border-top:1px solid var(--ij-border-subtle)}
+.git-accounts-footer>span{flex:1}
+.git-accounts-form{width:min(440px,calc(100vw - 32px));border:1px solid var(--ij-popup-border);border-radius:var(--ij-popup-radius);background:var(--ij-dialog);color:var(--ij-text);box-shadow:var(--ij-shadow);padding:0;font:var(--ij-font-size)/1.4 var(--ij-font-ui)}
+.git-accounts-form form{display:flex;flex-direction:column;gap:8px;padding:14px 16px 0}
+.git-accounts-form h2{margin:0;font-size:14px}.git-accounts-form label{display:flex;flex-direction:column;gap:3px}
+.git-accounts-form .git-accounts-footer{margin:4px -16px 0}
+.git-accounts-form [role=alert]{margin:0;color:var(--ij-error)}.git-accounts-form [role=alert]:empty{display:none}
+#git-account-choices{display:flex;flex-direction:column;gap:2px;max-height:260px;overflow:auto}
+.git-account-choice{display:grid!important;grid-template-columns:auto 1fr;column-gap:8px;padding:5px 6px;border-radius:4px}
+.git-account-choice:hover{background:var(--ij-list-hover)}.git-account-choice input{grid-row:span 2;margin:2px 0 0}
+.git-account-choice small{color:var(--ij-text-secondary)}
+.git-project-account{margin-left:auto;border:0;background:transparent;color:var(--ij-link);padding:0 2px;height:auto;font-size:var(--ij-font-size-small);max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.git-project-account.warning{color:var(--ij-warning)}

@@ -13,6 +13,7 @@ import { changelistDialog, closeChangelistDialog, findList, groupByChangelist, l
 import { showMenu, closeMenus } from './git-menu';
 import { lineSelection, countLabel } from './git-line-selection';
 import { tagActions } from './git-tags';
+import { resetActions } from './git-reset';
 
 
 export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace: () => Promise<void>) {
@@ -336,8 +337,10 @@ export function mountGit(api: IdeApi, hasUnsaved: () => boolean, reloadWorkspace
   // Git → New Tag… (popup de branches): diálogo completo; atualiza o Log se estiver aberto.
   on(document, 'ide-git-new-tag', () => tags.dialog({context: {head: undefined, reload: async () => history.refresh(), feedback, tools: () => undefined}}));
   const history = gitLogView(api,{diff(path,revision){void showDiff(path,false,revision);},branches(){void operations.branches();},operation(kind,hash){void operations.open(kind,hash);},commit(){el('show-commit').click();},
-    extend: (menu, commit, context) => tags.extendLog(menu, commit, context),
-    refMenu: (ref, x, y, context) => { if (ref.kind === 'tag') showMenu(tags.items(ref.name, ref.commit, context), x, y, ref.name); }});
+    extend: (menu, commit, context) => { tags.extendLog(menu, commit, context); resets.extendLog(menu, commit, context); },
+    refMenu: (ref, x, y, context) => { if (ref.kind === 'tag') showMenu(tags.items(ref.name, ref.commit, context, ref.commit ? [{label: 'Checkout', run: () => void resets.checkout(ref.commit!, context)}] : []), x, y, ref.name); }});
+  const resets = resetActions(api, {busy: () => busy, hasUnsaved, setBusy(value) { busy = value; el<HTMLButtonElement>('open').disabled = value; commitEnabled(); }, feedback,
+    async changed() { closeDiff(); try { await reloadWorkspace(); } catch (error) { feedback(String(error)); } await refresh(true); }});
   // Annotate → Mostrar diff: diff histórico do arquivo no commit da linha.
   on(document, 'ide-git-show-diff', (event: Event) => { const {hash, path} = (event as CustomEvent).detail ?? {}; if (hash && path) void showDiff(path, false, hash); });
   el('show-commit').onclick = () => { panel.hidden=false;el('tree').hidden=true;sidebar.querySelector('h3')!.hidden=true;document.querySelector('main')!.classList.add('git-open');void refresh(true);void showAccount(); };

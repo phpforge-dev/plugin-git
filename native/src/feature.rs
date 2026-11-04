@@ -987,6 +987,9 @@ pub async fn dispatch_with(
             if let Some(result) = tags::operation(root, kind, input, accounts).await {
                 return result;
             }
+            if let Some(result) = reset::operation(root, kind, input).await {
+                return result;
+            }
             if [
                 "switch",
                 "checkout-remote",
@@ -1006,10 +1009,18 @@ pub async fn dispatch_with(
             let argv: Vec<String> = match kind {
                 "create-branch" => {
                     git(root, &["check-ref-format", "--branch", target]).await?;
+                    // Log → New Branch… parte do commit escolhido.
+                    let start = match input["startPoint"].as_str() {
+                        Some(hash) => {
+                            valid_hash(hash)?;
+                            hash
+                        }
+                        None => "HEAD",
+                    };
                     if input["checkout"] == false {
-                        vec!["branch", "--", target]
+                        vec!["branch", "--", target, start]
                     } else {
-                        vec!["switch", "-c", target]
+                        vec!["switch", "-c", target, start]
                     }
                 }
                 "checkout-remote" => {
@@ -1169,6 +1180,8 @@ mod extra_scenarios;
 mod line_staging;
 #[path = "log_filter.rs"]
 mod log_filter;
+#[path = "reset.rs"]
+mod reset;
 #[path = "tags.rs"]
 mod tags;
 #[cfg(test)]

@@ -492,3 +492,71 @@ async fn tags_create_annotated_force_and_delete() {
         "no remote"
     );
 }
+
+#[tokio::test]
+async fn reset_modes_match_git_semantics() {
+    let (_dir, root) = repo();
+    let first = commit(&root, "a.txt", "1\n", "one");
+    commit(&root, "a.txt", "2\n", "two");
+    let reset = |mode: &str, target: &str| {
+        let root = root.clone();
+        let mode = mode.to_string();
+        let target = target.to_string();
+        async move { op(&root, json!({"kind":"reset","target":target,"mode":mode})).await }
+    };
+    let staged = |root: &Path| command(root, &["diff", "--cached", "--name-only"]);
+    reset("soft", &first).await.unwrap();
+    assert_eq!(command(&root, &["rev-parse", "HEAD"]), first);
+    assert_eq!(staged(&root), "a.txt", "soft keeps differences staged");
+    command(&root, &["commit", "-qm", "two again"]);
+    reset("mixed", &first).await.unwrap();
+    assert_eq!(staged(&root), "");
+    assert_eq!(
+        fs::read_to_string(root.join("a.txt")).unwrap(),
+        "2\n",
+        "mixed keeps disk"
+    );
+    command(&root, &["commit", "-qam", "two again"]);
+    let head = command(&root, &["rev-parse", "HEAD"]);
+    fs::write(root.join("b.txt"), "local").unwrap();
+    command(&root, &["add", "b.txt"]);
+    reset("keep", &first).await.unwrap();
+    assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "1\n");
+    assert!(root.join("b.txt").exists(), "keep preserves local changes");
+    command(&root, &["add", "b.txt"]);
+    reset("hard", &head).await.unwrap();
+    assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "2\n");
+    assert!(!root.join("b.txt").exists(), "hard discards local changes");
+    assert!(reset("medium", &first).await.is_err());
+    assert!(
+        reset("hard", "HEAD~1").await.is_err(),
+        "only full hashes from Log"
+    );
+}
+
+#[tokio::test]
+async fn new_branch_and_checkout_from_log_commit() {
+    let (_dir, root) = repo();
+    let first = commit(&root, "a", "1", "one");
+    commit(&root, "a", "2", "two");
+    op(
+        &root,
+        json!({"kind":"create-branch","target":"from-log","startPoint":first,"checkout":false}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(command(&root, &["rev-parse", "from-log"]), first);
+    op(&root, json!({"kind":"checkout-revision","target":first}))
+        .await
+        .unwrap();
+    assert!(status(&root).await.unwrap()["branch"]
+        .as_str()
+        .unwrap()
+        .starts_with("HEAD destacado"));
+    assert!(op(
+        &root,
+        json!({"kind":"create-branch","target":"x","startPoint":"HEAD~1"})
+    )
+    .await
+    .is_err());
+}

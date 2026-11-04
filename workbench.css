@@ -468,3 +468,8 @@ main.git-open.left-hidden{--left-size:0px}
 /* Tag dialogs (G-20): the Log variant asks only for the name. */
 .git-tag-dialog .git-tag-name:has(span:empty){grid-template-columns:1fr}.git-tag-dialog .git-tag-name span:empty{display:none}
 .git-tag-prompt{margin:0 0 8px;font-size:13px}.git-tag-prompt:empty{display:none}
+/* Git Reset (G-19): target line, explanation, four radio modes with grey descriptions. */
+.git-reset-dialog{max-width:620px}.git-reset-dialog p{margin:0 0 10px;font-size:13px;line-height:1.4}
+.git-reset-target strong{font-weight:600}.git-reset-author{font-family:var(--ij-font-mono,monospace)}
+.git-reset-mode{display:grid;grid-template-columns:20px 1fr;align-items:center;column-gap:6px;margin:8px 0;font-size:13px}
+.git-reset-mode small{grid-column:2;white-space:pre-line;color:var(--ij-text-secondary,var(--muted));font-size:12px;margin-top:3px}

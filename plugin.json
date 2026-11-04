@@ -21,6 +21,7 @@
       "gitAccount",
       "gitAccounts",
       "gitAccountsDefault",
+      "gitAccountsLogin",
       "gitAccountsRemove",
       "gitAccountsSave",
       "gitAccountsUse",

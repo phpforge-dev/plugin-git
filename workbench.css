@@ -489,3 +489,14 @@ main.git-open.left-hidden{--left-size:0px}
 .git-worktree-dialog select{font:inherit;padding:4px 6px;border:1px solid var(--ij-control-border,var(--border));border-radius:4px;background:transparent;color:inherit}
 .git-wt-new span{display:flex;align-items:center;gap:4px}.git-wt-new em{font-style:normal}
 .git-wt-hint{margin:0 0 6px 98px;color:var(--ij-text-secondary,var(--muted));font-size:12px;min-height:1em}
+.git-accounts-form label[hidden],.git-accounts-menu[hidden],#git-operation-actions[hidden]{display:none}
+.git-accounts-list-wrap{position:relative}
+.git-accounts-menu{position:absolute;top:28px;left:4px;z-index:2;display:flex;flex-direction:column;min-width:190px;padding:4px;border:1px solid var(--ij-popup-border);border-radius:var(--ij-popup-radius);background:var(--ij-popup,var(--ij-dialog));box-shadow:var(--ij-shadow)}
+.git-accounts-menu hr{border:0;border-top:1px solid var(--ij-border-subtle);margin:4px 2px}
+.git-accounts-menu button{border:0;border-radius:4px;background:transparent;color:var(--ij-text);text-align:left;padding:4px 10px;font:inherit}
+.git-accounts-menu button:hover,.git-accounts-menu button:focus{background:var(--ij-selection);outline:none}
+.git-account-token-row{display:flex;gap:6px}.git-account-token-row input{flex:1;min-width:0}
+.git-account-code{display:flex;align-items:center;gap:10px}
+.git-account-code output{flex:1;padding:8px 10px;border:1px solid var(--ij-border);border-radius:4px;font:600 20px/1.2 var(--ij-font-mono,monospace);letter-spacing:2px;text-align:center;user-select:all}
+.git-account-code output:empty::before{content:'…';color:var(--ij-text-secondary)}
+#git-operation-actions{display:flex;gap:8px;margin:4px 0}

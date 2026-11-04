@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod oauth;
 pub(crate) mod feature;
 mod process;
 #[allow(dead_code)]

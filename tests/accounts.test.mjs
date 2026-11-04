@@ -26,7 +26,7 @@ test('accounts settings, first-commit choice, remembered and switchable project 
  // Atalho nas Configurações abre a tela de contas (GitHub por padrão).
  const launcher=document.querySelector('#appearance-dialog .git-accounts-open');assert.ok(launcher,'launcher in Settings');
  launcher.click();await tick();assert.equal($('git-accounts-settings').open,true);assert.equal($('git-accounts-page').textContent,'GitHub');
- const add=async(login,name,email,secret='tok')=>{click('git-accounts-add');await tick();assert.equal($('git-account-host').value,'github.com');
+ const add=async(login,name,email,secret='tok')=>{click('git-accounts-add');await tick();assert.equal($('git-accounts-add-menu').hidden,false,'+ opens the GitHub login menu');click('git-accounts-login-token');await tick();assert.equal($('git-account-host').value,'github.com');
   $('git-account-login').value=login;$('git-account-name').value=name;$('git-account-email').value=email;$('git-account-secret').value=secret;
   $('git-account-form').querySelector('form').dispatchEvent(new w.Event('submit',{cancelable:true}));await tick();await tick();};
  await add('jeidison','Jeidison Farias','bad-email');

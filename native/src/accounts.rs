@@ -3,6 +3,7 @@
 //! `phpide.account` na configuração local do repositório.
 use crate::{
     feature::s,
+    oauth::{self, OAuth, Poll},
     process::git,
     workspace::{err, Res},
 };
@@ -77,6 +78,7 @@ impl Secrets for MemorySecrets {
 pub struct Accounts {
     file: PathBuf,
     secrets: Arc<dyn Secrets>,
+    oauth: OAuth,
 }
 static FILE_LOCK: Mutex<()> = Mutex::new(());
 
@@ -107,7 +109,12 @@ fn remote_host(url: &str) -> Option<(String, String)> {
 
 impl Accounts {
     pub fn new(file: PathBuf, secrets: Arc<dyn Secrets>) -> Self {
-        Self { file, secrets }
+        Self { file, secrets, oauth: OAuth::system() }
+    }
+    /// Login/validação contra outro provedor (testes com servidor OAuth falso).
+    pub fn with_oauth(mut self, oauth: OAuth) -> Self {
+        self.oauth = oauth;
+        self
     }
     /// Contas guardadas no diretório de estado da IDE. Com `PHP_IDE_GIT_SECRETS=memory`
     /// e um diretório de estado explícito (testes), os tokens ficam só em memória.
@@ -377,6 +384,77 @@ pub fn auth_error(error: String, account: Option<&Value>) -> String {
     }
 }
 
+impl Accounts {
+    /// Confere o token novo de uma conta GitHub/GitLab na API antes de gravar e completa
+    /// login, nome e e-mail vazios. Sem rede, só grava se os três campos foram preenchidos.
+    async fn validated(&self, mut input: Value) -> Res<Value> {
+        let kind = input["kind"].as_str().unwrap_or("").to_string();
+        let secret = input["secret"].as_str().unwrap_or("").to_string();
+        if !matches!(kind.as_str(), "github" | "gitlab") || secret.is_empty() {
+            return Ok(input);
+        }
+        let default_host = if kind == "github" { "github.com" } else { "gitlab.com" };
+        let host = Some(input["host"].as_str().unwrap_or("").trim().to_ascii_lowercase()).filter(|h| !h.is_empty()).unwrap_or(default_host.into());
+        if !valid_host(&host) {
+            return Err("Informe o host, por exemplo github.com ou git.empresa.com:8443".into());
+        }
+        let field = |v: &Value, k: &str| v[k].as_str().unwrap_or("").trim().to_string();
+        match oauth::user(&self.oauth, &kind, &host, &secret).await {
+            Ok(user) => {
+                let login = field(&input, "login");
+                if !login.is_empty() && !login.eq_ignore_ascii_case(&user.login) {
+                    return Err(format!("O token pertence a {}, não a {}", user.login, login));
+                }
+                input["login"] = json!(user.login);
+                if field(&input, "name").is_empty() {
+                    input["name"] = json!(user.name);
+                }
+                if field(&input, "email").is_empty() {
+                    input["email"] = json!(user.email);
+                }
+                Ok(input)
+            }
+            Err(e) if e.starts_with("Não foi possível falar") && ["login", "name", "email"].iter().all(|k| !field(&input, k).is_empty()) => Ok(input),
+            Err(e) => Err(e),
+        }
+    }
+    /// Grava o token do login pelo navegador: atualiza a conta do mesmo usuário ou cria outra.
+    async fn store_login(&self, kind: &str, host: &str, token: String) -> Res<Value> {
+        let user = oauth::user(&self.oauth, kind, host, &token).await?;
+        let existing = self.load()?.into_iter().find(|a| a["host"] == host && a["login"].as_str().is_some_and(|l| l.eq_ignore_ascii_case(&user.login)));
+        let input = match &existing {
+            Some(a) => json!({"id":a["id"],"kind":a["kind"],"host":host,"login":a["login"],"name":a["name"],"email":a["email"],"secret":token}),
+            None => json!({"kind":kind,"host":host,"login":user.login,"name":user.name,"email":user.email,"secret":token}),
+        };
+        let me = self.clone();
+        let id = tokio::task::spawn_blocking(move || me.save(&input)).await.map_err(err)??;
+        Ok(json!({"status":"done","id":id,"login":user.login,"updated":existing.is_some()}))
+    }
+    /// `gitAccountsLogin`: login pelo navegador (start/poll/cancel) e página Generate.
+    async fn login(&self, input: &Value) -> Res<Value> {
+        let kind = input["kind"].as_str().unwrap_or("github");
+        let host = Some(input["host"].as_str().unwrap_or("").trim().to_ascii_lowercase()).filter(|h| !h.is_empty()).unwrap_or(if kind == "gitlab" { "gitlab.com".into() } else { "github.com".into() });
+        if !valid_host(&host) {
+            return Err("Host inválido".into());
+        }
+        match input["action"].as_str().unwrap_or("") {
+            "start" => oauth::start(&self.oauth, kind, &host).await,
+            "poll" => match oauth::poll(&self.oauth, s(&input["session"])?).await? {
+                Poll::Pending(interval) => Ok(json!({"status":"pending","interval":interval})),
+                Poll::Token { host, token } => self.store_login("github", &host, token).await,
+            },
+            "cancel" => oauth::cancel(s(&input["session"])?).map(|_| Value::Null),
+            "reopen" => oauth::reopen(&self.oauth, s(&input["session"])?).map(|opened| json!({"opened":opened})),
+            "generate" => {
+                let url = oauth::token_page(&self.oauth, kind, &host)?;
+                let opened = (self.oauth.browser)(&url).is_ok();
+                Ok(json!({"url":url,"opened":opened}))
+            }
+            _ => Err("Ação de login desconhecida".into()),
+        }
+    }
+}
+
 /// Serviços `gitAccounts*`: gerenciam contas da IDE e a escolha do projeto aberto.
 pub async fn dispatch(accounts: &Accounts, root: &Path, method: &str, args: &[Value]) -> Res<Value> {
     let a = |i: usize| args.get(i).unwrap_or(&Value::Null);
@@ -396,9 +474,11 @@ pub async fn dispatch(accounts: &Accounts, root: &Path, method: &str, args: &[Va
             Ok(json!({"accounts":list,"project":project}))
         }
         "gitAccountsSave" => {
-            let (me, input) = (accounts.clone(), a(0).clone());
+            let input = accounts.validated(a(0).clone()).await?;
+            let me = accounts.clone();
             blocking(Box::new(move || me.save(&input))).await
         }
+        "gitAccountsLogin" => accounts.login(a(0)).await,
         "gitAccountsRemove" => {
             let (me, id) = (accounts.clone(), s(a(0))?.to_string());
             blocking(Box::new(move || me.remove(&id).map(|_| Value::Null))).await

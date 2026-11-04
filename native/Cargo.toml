@@ -12,6 +12,7 @@ regex="1"
 dunce="1"
 chrono="0.4"
 url="2"
+reqwest={version="0.13",default-features=false,features=["rustls","system-proxy"]}
 keyring={version="3.6",features=["apple-native","windows-native","sync-secret-service","crypto-rust"]}
 [dev-dependencies]
 tempfile="3"

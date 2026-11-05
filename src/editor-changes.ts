@@ -29,10 +29,10 @@ export function mountEditorChanges(api: IdeApi, editor: monaco.editor.IStandalon
   root.querySelector('strong')!.textContent=`${label} · linha ${block.line}`;root.querySelector('button')!.onclick=close;
   const content=root.querySelector('.line-diff')!;
   for(const [text,kind]of [[block.before,'removed'],[block.after,'added']])if(text){const pre=document.createElement('pre');pre.className=kind;pre.textContent=text;content.append(pre);}
-  const rect=editor.getDomNode()!.getBoundingClientRect();const point=editor.getScrolledVisiblePosition({lineNumber:block.line,column:1});root.style.left=Math.min(rect.left+55,innerWidth-660)+'px';root.style.top=Math.max(8,Math.min(rect.top+(point?.top??30)+22,innerHeight-330))+'px';document.body.append(root);root.querySelector('button')!.focus();
+  const rect=editor.getContainerDomNode().getBoundingClientRect();const point=editor.getScrolledVisiblePosition({lineNumber:block.line,column:1});root.style.left=Math.min(rect.left+55,innerWidth-660)+'px';root.style.top=Math.max(8,Math.min(rect.top+(point?.top??30)+22,innerHeight-330))+'px';document.body.append(root);root.querySelector('button')!.focus();
  }
  // Identificar o bloco pela decoração, sem depender do hit-test do gutter.
- const markerHost=editor.getDomNode()!.parentElement!;
+ const markerHost=editor.getContainerDomNode();
  const markerClick=(event:MouseEvent)=>{
   if(event.button!==0)return;
   const marker=(event.target as Element).closest('.git-line-added,.git-line-modified,.git-line-deleted');
@@ -50,7 +50,7 @@ export function mountEditorChanges(api: IdeApi, editor: monaco.editor.IStandalon
  own(editor.addAction({id:'php-ide.lineHistory',label:'Git: autor e commit desta linha',contextMenuGroupId:'git',run:async()=>{
   const model=editor.getModel();const path=hooks.path();const position=editor.getPosition();if(!model||!path||!position)return;
   hooks.status(tr('Buscando autoria da linha…'));try{const info=await api.gitLineInfo(path,position.lineNumber,model.getValue());if(editor.getModel()!==model)return;
-   close();const root=document.createElement('section');popup=root;root.className='git-line-popup git-line-history';root.setAttribute('role','dialog');root.setAttribute('aria-label',tr('Git: autoria da linha'));const title=document.createElement('strong');title.textContent=info.uncommitted?tr('Alteração ainda não commitada'):`${info.author} · ${info.hash.slice(0,8)}`;const text=document.createElement('p');text.textContent=info.summary;const date=document.createElement('small');date.textContent=info.uncommitted?tr('Buffer atual'):new Date(info.date).toLocaleString();const button=document.createElement('button');button.textContent=tr('Fechar');button.onclick=close;root.append(title,text,date,button);document.body.append(root);const rect=editor.getDomNode()!.getBoundingClientRect();root.style.left=Math.min(rect.left+70,innerWidth-660)+'px';root.style.top=Math.min(rect.top+80,innerHeight-250)+'px';button.focus();hooks.status(tr('Autoria da linha consultada.'));
+   close();const root=document.createElement('section');popup=root;root.className='git-line-popup git-line-history';root.setAttribute('role','dialog');root.setAttribute('aria-label',tr('Git: autoria da linha'));const title=document.createElement('strong');title.textContent=info.uncommitted?tr('Alteração ainda não commitada'):`${info.author} · ${info.hash.slice(0,8)}`;const text=document.createElement('p');text.textContent=info.summary;const date=document.createElement('small');date.textContent=info.uncommitted?tr('Buffer atual'):new Date(info.date).toLocaleString();const button=document.createElement('button');button.textContent=tr('Fechar');button.onclick=close;root.append(title,text,date,button);document.body.append(root);const rect=editor.getContainerDomNode().getBoundingClientRect();root.style.left=Math.min(rect.left+70,innerWidth-660)+'px';root.style.top=Math.min(rect.top+80,innerHeight-250)+'px';button.focus();hooks.status(tr('Autoria da linha consultada.'));
   }catch(error){hooks.status(`Git: ${String(error)}`);}
  }}));
  // Annotate with Git Blame: fica ativo por arquivo até "Fechar anotações"; acompanha o buffer não salvo.
